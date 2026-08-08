@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@lucide/svelte@1.30.0'

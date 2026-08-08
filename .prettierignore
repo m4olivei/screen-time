@@ -1,0 +1,19 @@
+# Package manager
+pnpm-lock.yaml
+node_modules/
+
+# Build output
+dist/
+build/
+.svelte-kit/
+.vercel/
+
+# Reference documents kept verbatim
+docs/udm-api-openapi-spec.json
+
+# Project planning / tooling metadata
+.ai/
+.agents/
+.claude/
+.idea/
+skills-lock.json

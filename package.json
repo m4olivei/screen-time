@@ -1,0 +1,20 @@
+{
+	"name": "screen-time",
+	"private": true,
+	"version": "0.0.1",
+	"description": "Household screen time manager monorepo",
+	"packageManager": "pnpm@11.20.0",
+	"scripts": {
+		"dev": "pnpm --filter web dev",
+		"build": "pnpm -r run build",
+		"check": "pnpm --filter @screen-time/shared run build && pnpm -r run check",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"devDependencies": {
+		"prettier": "^3.6.2",
+		"prettier-plugin-svelte": "^4.1.1",
+		"prettier-plugin-tailwindcss": "^0.8.1",
+		"typescript": "^5.9.2"
+	}
+}

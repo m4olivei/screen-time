@@ -245,3 +245,61 @@ Integration with the existing household UniFi setup is deliberately minimal and 
 - 2026-08-07: Made the plan self-contained — inlined the repo layout tree and removed binding-by-reference language pointing at `screen-time-app-plan.md`, so the sketch file at the repo root can be deleted. `udm-api-openapi-spec.json` remains a required in-repo reference (later moved to `docs/`).
 - 2026-08-07: Applied self-review feedback — worker tick changed from 60 seconds to a 5-second default, configurable via environment variable; reconciliation now writes to the gateway only on state mismatch (a consequence of the faster tick); configuration formalized as per-package `.env` files with committed `.env.example` specs and a copy step in setup docs. The API key remains env-only and is never embedded in the repo. Latency references updated throughout.
 - 2026-08-07: Auth VERIFY item resolved — the user ran `GET /v1/info` against the live controller with the `X-API-KEY` header and received `{"applicationVersion":"10.5.67"}`. Auth scheme confirmed; controller version matches the in-repo spec. The "auth scheme unverified" technical risk was removed. One VERIFY item remains open: proving the GET→flip→PUT toggle round-trip on the firewall policy.
+
+## Execution Blueprint
+
+**Validation Gates:**
+- Reference: `/config/hooks/POST_PHASE.md`
+
+### Dependency Diagram
+
+```mermaid
+graph TD
+    T01[Task 01: Scaffold monorepo & tooling] --> T02[Task 02: Shared DB layer]
+    T01 --> T04[Task 04: UniFi client & toggle proof]
+    T02 --> T03[Task 03: Desired-state function & tests]
+    T02 --> T05[Task 05: Reconcile worker & systemd]
+    T03 --> T05
+    T04 --> T05
+    T02 --> T06[Task 06: Status view & override buttons]
+    T03 --> T06
+    T02 --> T07[Task 07: Weekly schedule editor]
+    T06 --> T07
+    T06 --> T08[Task 08: PWA layer]
+    T05 --> T09[Task 09: Setup README & AGENTS.md]
+    T07 --> T09
+    T08 --> T09
+```
+
+### ✅ Phase 1: Foundation
+**Parallel Tasks:**
+- ✔️ Task 01: Scaffold pnpm monorepo and frontend tooling — `completed`
+
+### Phase 2: Shared Building Blocks
+**Parallel Tasks:**
+- Task 02: Shared TypeORM data layer (SQLite) (depends on: 01)
+- Task 04: UniFi Integration API client with live toggle proof (depends on: 01)
+
+### Phase 3: Core Logic
+**Parallel Tasks:**
+- Task 03: Desired-state function with unit tests (depends on: 02)
+
+### Phase 4: Enforcement and Primary UI
+**Parallel Tasks:**
+- Task 05: Reconcile worker with systemd unit (depends on: 02, 03, 04)
+- Task 06: Status view and override buttons (depends on: 02, 03)
+
+### Phase 5: Completing the Web App
+**Parallel Tasks:**
+- Task 07: Weekly schedule editor (depends on: 02, 06)
+- Task 08: PWA layer (manifest + service worker) (depends on: 06)
+
+### Phase 6: Documentation
+**Parallel Tasks:**
+- Task 09: Setup README and AGENTS.md (depends on: 05, 07, 08)
+
+### Post-phase Actions
+
+### Execution Summary
+- Total Phases: 6
+- Total Tasks: 9

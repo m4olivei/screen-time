@@ -6,3 +6,20 @@ review.guide.xml
 
 # Local environment files (secrets) — committed specs live in .env.example
 .env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.svelte-kit/
+.output/
+.vercel/
+
+# Misc
+*.log
+.DS_Store
+vite.config.ts.timestamp-*
