@@ -2,7 +2,7 @@
 id: 2
 group: "shared-package"
 dependencies: [1]
-status: "pending"
+status: "completed"
 created: 2026-08-07
 skills:
   - typeorm

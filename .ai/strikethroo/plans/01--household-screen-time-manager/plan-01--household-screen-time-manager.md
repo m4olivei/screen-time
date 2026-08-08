@@ -275,10 +275,10 @@ graph TD
 **Parallel Tasks:**
 - ✔️ Task 01: Scaffold pnpm monorepo and frontend tooling — `completed`
 
-### Phase 2: Shared Building Blocks
+### ✅ Phase 2: Shared Building Blocks
 **Parallel Tasks:**
-- Task 02: Shared TypeORM data layer (SQLite) (depends on: 01)
-- Task 04: UniFi Integration API client with live toggle proof (depends on: 01)
+- ✔️ Task 02: Shared TypeORM data layer (SQLite) (depends on: 01) — `completed`
+- ✔️ Task 04: UniFi Integration API client with live toggle proof (depends on: 01) — `completed`
 
 ### Phase 3: Core Logic
 **Parallel Tasks:**

@@ -2,7 +2,7 @@
 id: 4
 group: "unifi-integration"
 dependencies: [1]
-status: "pending"
+status: "completed"
 created: 2026-08-07
 skills:
   - typescript
