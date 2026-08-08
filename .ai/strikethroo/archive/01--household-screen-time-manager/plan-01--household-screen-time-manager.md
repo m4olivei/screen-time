@@ -303,3 +303,35 @@ graph TD
 ### Execution Summary
 - Total Phases: 6
 - Total Tasks: 9
+
+## Execution Summary
+
+**Status**: ✅ Completed Successfully
+**Completed Date**: 2026-08-08
+
+### Results
+
+All 9 tasks across 6 phases delivered on branch `feature/1--household-screen-time-manager` (6 conventional commits):
+
+- **pnpm monorepo**: `packages/shared`, `apps/web`, `apps/worker`; shared `tsconfig.base.json` with TypeORM decorator support; root Prettier with `prettier-plugin-tailwindcss`.
+- **packages/shared**: TypeORM/better-sqlite3 data layer (Profile, ScheduleWindow, Override; WAL mode), pure `computeDesiredState` + `computeNextTransition`/`computeExtendAnchor` (45 Vitest tests incl. DST and midnight cases), and the UniFi Integration API client (X-API-KEY auth, client-scoped self-signed-TLS handling, GET→flip `enabled`→PUT with read-only fields stripped) plus `toggle-proof.ts`.
+- **apps/worker**: 5s-tick (env-configurable) reconcile loop — PUT only on state mismatch, per-tick error isolation, startup policy-name log — with `screen-time-worker.service` and `.env.example`.
+- **apps/web**: mobile-first status page ("Kids' internet: ON until …") with +15/+5/Pause/Allow form actions (work without JS), weekly schedule editor with server-side validation, installable PWA (standalone manifest, generateSW with NetworkFirst navigations, iOS meta tags, generated icons). No UniFi code or credentials anywhere in the web app.
+- **Docs**: README.md (ZBF prerequisite, manual UniFi checklist, env setup, systemd deploy, home-screen install), AGENTS.md (invariants, do-not-add list, locked decisions), CLAUDE.md pointer.
+
+Self Validation executed 2026-08-08: live toggle round-trip exit 0; 45/45 unit tests; web UI exercise via curl+sqlite3 (extend row created and status cutoff moved 10:34→10:49, block_now flipped status to OFF, schedule window added/deleted); PWA manifest/service worker/icons all serving from the production build; client bundle greps clean of `UNIFI_API_KEY`/`X-API-KEY`/key value; worker survived an unreachable gateway with logged per-tick errors and reconciled behavior live-proven against the UDM Pro (transition PUT within one tick, idempotent restart).
+
+### Noteworthy Events
+
+- **Review gate**: skipped — recorded verbatim: reason `no-reviewer-candidate`, detail "No harness other than `claude` is installed and responsive, so the review gate was skipped." No rounds ran; 0 findings recorded, 0 applied.
+- **Zone-Based Firewall migration (task 04)**: the live proof initially failed with `400 api.firewall.zone-based-firewall-not-configured` — the UDM Pro was on the legacy firewall, where the Integration API's firewall endpoints do not exist. The user migrated to ZBF. The migrated legacy rule ("Weekday Screen Time Limitations") proved unusable: not API-addressable (no `id` in the API response) and carrying a schedule. The user created a fresh schedule-free policy ("Screen Time App Toggle", `<your-policy-id>`); the proof then passed. The ZBF prerequisite is documented in the README.
+- **Task 04 was briefly marked `failed`** per POST_ERROR_DETECTION while awaiting the user's console work, then re-executed to completion.
+- **Orchestrator fix during Phase 5 verification**: `apps/web/src/lib/server/env.ts` resolved `.env` via a fixed `../../../` walk that broke in the bundled build (`.svelte-kit/output/server/chunks/`) — production builds failed unless the variables happened to be in the shell. Fixed to walk up to the nearest `.env`; verified by building with DB_PATH/TIMEZONE stripped from the environment.
+- **Stale doc comment fixed**: `packages/shared/.env.example` claimed the proof script lists sites/policies when IDs are empty; the script requires all four vars. Comments now point at the README's curl discovery commands (flagged by the task 09 agent).
+- **Playwright substitution**: the self-validation's Playwright UI exercise ran as curl + sqlite3 assertions instead (playwright-cli not runnable in this environment); coverage of the specified checks was equivalent except screenshots.
+
+### Necessary follow-ups
+
+- **Deploy to the Raspberry Pi**: install per README (pnpm build, copy `screen-time-worker.service`, `systemctl enable --now`), seed the Profile row with `unifiRuleId=<your-policy-id>`, then run the plan's systemd-dependent validation steps that cannot run on the macOS dev machine: worker under systemd surviving reboot/`systemctl kill`, and `journalctl` reconcile logs.
+- Optionally remove or keep the retired "Weekday Screen Time Limitations" rule in the UniFi console; if kept enabled it independently blocks 19:15–20:59 daily.
+- The web app currently serves over plain HTTP on the LAN; PWA install criteria are met on `localhost`/secure contexts — consider serving via HTTPS or documenting the localhost/onion-of-trust caveat if install issues arise on the phone.
