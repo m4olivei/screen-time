@@ -2,7 +2,7 @@
 id: 6
 group: "web-app"
 dependencies: [2, 3]
-status: "pending"
+status: "completed"
 created: 2026-08-07
 skills:
   - sveltekit

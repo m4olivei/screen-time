@@ -284,10 +284,10 @@ graph TD
 **Parallel Tasks:**
 - ✔️ Task 03: Desired-state function with unit tests (depends on: 02) — `completed`
 
-### Phase 4: Enforcement and Primary UI
+### ✅ Phase 4: Enforcement and Primary UI
 **Parallel Tasks:**
-- Task 05: Reconcile worker with systemd unit (depends on: 02, 03, 04)
-- Task 06: Status view and override buttons (depends on: 02, 03)
+- ✔️ Task 05: Reconcile worker with systemd unit (depends on: 02, 03, 04) — `completed`
+- ✔️ Task 06: Status view and override buttons (depends on: 02, 03) — `completed`
 
 ### Phase 5: Completing the Web App
 **Parallel Tasks:**

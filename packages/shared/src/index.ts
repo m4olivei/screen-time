@@ -16,3 +16,8 @@ export {
 	type ComputeDesiredStateInput,
 	type DesiredState
 } from './desired-state.js';
+export {
+	computeExtendAnchor,
+	computeNextTransition,
+	NEXT_TRANSITION_HORIZON_DAYS
+} from './next-transition.js';

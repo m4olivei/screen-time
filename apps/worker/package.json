@@ -13,6 +13,7 @@
 		"@screen-time/shared": "workspace:*"
 	},
 	"devDependencies": {
+		"@types/node": "^26.1.2",
 		"tsx": "^4.20.5",
 		"typescript": "^5.9.2"
 	}
