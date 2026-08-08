@@ -280,9 +280,9 @@ graph TD
 - ✔️ Task 02: Shared TypeORM data layer (SQLite) (depends on: 01) — `completed`
 - ✔️ Task 04: UniFi Integration API client with live toggle proof (depends on: 01) — `completed`
 
-### Phase 3: Core Logic
+### ✅ Phase 3: Core Logic
 **Parallel Tasks:**
-- Task 03: Desired-state function with unit tests (depends on: 02)
+- ✔️ Task 03: Desired-state function with unit tests (depends on: 02) — `completed`
 
 ### Phase 4: Enforcement and Primary UI
 **Parallel Tasks:**
