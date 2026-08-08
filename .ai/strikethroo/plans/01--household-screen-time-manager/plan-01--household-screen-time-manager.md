@@ -289,10 +289,10 @@ graph TD
 - ✔️ Task 05: Reconcile worker with systemd unit (depends on: 02, 03, 04) — `completed`
 - ✔️ Task 06: Status view and override buttons (depends on: 02, 03) — `completed`
 
-### Phase 5: Completing the Web App
+### ✅ Phase 5: Completing the Web App
 **Parallel Tasks:**
-- Task 07: Weekly schedule editor (depends on: 02, 06)
-- Task 08: PWA layer (manifest + service worker) (depends on: 06)
+- ✔️ Task 07: Weekly schedule editor (depends on: 02, 06) — `completed`
+- ✔️ Task 08: PWA layer (manifest + service worker) (depends on: 06) — `completed`
 
 ### Phase 6: Documentation
 **Parallel Tasks:**

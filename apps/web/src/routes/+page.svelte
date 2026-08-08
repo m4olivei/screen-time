@@ -17,7 +17,10 @@
 </svelte:head>
 
 <main class="mx-auto flex min-h-screen w-full max-w-md flex-col gap-5 p-4 pt-8">
-	<h1 class="text-2xl font-bold tracking-tight">Screen Time</h1>
+	<nav class="flex items-center justify-between gap-3">
+		<h1 class="text-2xl font-bold tracking-tight">Screen Time</h1>
+		<Button href="/schedule" variant="outline" size="sm">Edit schedule</Button>
+	</nav>
 
 	{#if data.profiles.length === 0}
 		<p class="text-muted-foreground">No profiles yet — add one to get started.</p>

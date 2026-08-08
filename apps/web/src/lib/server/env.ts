@@ -7,11 +7,23 @@
  * the real environment take precedence over the file.
  */
 import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const envFile = fileURLToPath(new URL('../../../.env', import.meta.url));
-if (existsSync(envFile)) {
-	process.loadEnvFile(envFile);
+// Walk up from this module to the nearest `.env`. The module's on-disk
+// location differs between dev (src/lib/server/) and the bundled build
+// (.svelte-kit/output/server/chunks/), but both live under apps/web, so the
+// nearest `.env` above either location is the package's env file.
+let dir = dirname(fileURLToPath(import.meta.url));
+while (true) {
+	const candidate = join(dir, '.env');
+	if (existsSync(candidate)) {
+		process.loadEnvFile(candidate);
+		break;
+	}
+	const parent = dirname(dir);
+	if (parent === dir) break;
+	dir = parent;
 }
 
 function required(name: string): string {
