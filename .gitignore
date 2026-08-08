@@ -1,1 +1,8 @@
 .idea
+
+# Self-review scratch files (may contain secrets pasted into comments)
+review.xml
+review.guide.xml
+
+# Local environment files (secrets) — committed specs live in .env.example
+.env

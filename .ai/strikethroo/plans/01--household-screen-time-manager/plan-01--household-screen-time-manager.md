@@ -23,14 +23,16 @@ Refinement addendum (2026-08-07):
 | How does the Kids-network block firewall policy come to exist in UniFi? | The user creates it manually in the UniFi console (source: Kids network, destination: external, action: Block, no schedule) and provides its policy ID to the app via configuration. The app never creates or discovers policies — it only toggles the one it is given. |
 | Include the optional server-side "connection OK?" check in the web app? | No — skipped (YAGNI). The worker's per-tick error logging covers UniFi reachability. The web app remains a pure database front-end. |
 | Is backwards compatibility required? | No. Greenfield repository; nothing existing to stay compatible with. The only external contract is the UniFi Integration API. |
+| (Self-review, 2026-08-07) Worker tick interval? | Poll every **5 seconds** (not 60) so schedule changes are picked up nearly instantly, unless a serious performance issue emerges. The interval is configurable via an environment variable in `apps/worker/.env`. |
+| (Self-review, 2026-08-07) How is configuration supplied? | Plain `.env` files local to the package that needs them (e.g. `apps/worker/.env`), each spec'd by a committed `.env.example`; setup docs include copying `.env.example` to `.env`. The UniFi API key is env-only — the user holds it and it is never committed or embedded in docs. |
 
 ## Executive Summary
 
 This plan delivers a small, self-hosted household screen-time manager: a phone-friendly SvelteKit PWA that lets a non-technical family member (primary persona: the user's wife on an iPhone) see and control the kids' internet access, backed by a long-running worker process that enforces the decision by toggling a single firewall policy on a UniFi UDM Pro. The app owns all schedule logic; UniFi is reduced to a dumb on/off switch. The kids' devices are all on a dedicated "Kids" network, so a single firewall policy whose source matches that network is the entire enforcement surface.
 
-The system is three cooperating pieces in one pnpm monorepo sharing one SQLite database: the SvelteKit app (writes user intent — schedules and overrides — to the database), the worker (every 60 seconds computes desired internet state from schedule + overrides + now, and idempotently reconciles the UniFi policy's `enabled` flag to match), and a shared package holding the TypeORM data layer and the UniFi client. The app and worker never talk directly; the database is the shared blackboard, which makes every component restartable without losing state. The worker is the sole caller of UniFi, eliminating write races against the gateway.
+The system is three cooperating pieces in one pnpm monorepo sharing one SQLite database: the SvelteKit app (writes user intent — schedules and overrides — to the database), the worker (on every tick — every 5 seconds by default, configurable via environment variable — computes desired internet state from schedule + overrides + now, and idempotently reconciles the UniFi policy's `enabled` flag to match), and a shared package holding the TypeORM data layer and the UniFi client. The app and worker never talk directly; the database is the shared blackboard, which makes every component restartable without losing state. The worker is the sole caller of UniFi, eliminating write races against the gateway.
 
-Analysis of the provided OpenAPI spec (`docs/udm-api-openapi-spec.json`, UniFi Network API v10.5.67) resolved the work order's largest open question favorably: the **official UniFi Integration API can perform the toggle**, so the legacy `/proxy/network` cookie/CSRF fallback described in the sketch is not needed. The toggle is a read-modify-write: `GET` the firewall policy, flip `enabled`, `PUT` the full object back (the `PATCH` endpoint only supports `loggingEnabled` and cannot be used). The spec is sufficient to design the client, with one verification item: it declares no security scheme, so the expected `X-API-KEY` header auth must be verified against the live controller before the client is finalized.
+Analysis of the provided OpenAPI spec (`docs/udm-api-openapi-spec.json`, UniFi Network API v10.5.67) resolved the work order's largest open question favorably: the **official UniFi Integration API can perform the toggle**, so the legacy `/proxy/network` cookie/CSRF fallback described in the sketch is not needed. The toggle is a read-modify-write: `GET` the firewall policy, flip `enabled`, `PUT` the full object back (the `PATCH` endpoint only supports `loggingEnabled` and cannot be used). The spec is sufficient to design the client. Auth was verified against the live controller (2026-08-07): `GET /v1/info` with the `X-API-KEY` header succeeded and returned `applicationVersion: 10.5.67`, confirming both the auth scheme and that the in-repo spec matches the running controller version.
 
 ## Context
 
@@ -47,14 +49,15 @@ Analysis of the provided OpenAPI spec (`docs/udm-api-openapi-spec.json`, UniFi N
 ### Background
 
 - **Environment**: a UniFi UDM Pro runs the UniFi Network application (v10.5.67 per the spec). A Raspberry Pi (Debian/Ubuntu-based) on the same LAN hosts the app. A "Kids" network with its own WiFi SSID already exists and carries all kid devices.
-- **Locked decisions from the work order** (binding): TypeScript everywhere; SvelteKit; installable PWA via the Vite PWA plugin with **no push notifications**; SQLite as the single source of truth; TypeORM with entities in the shared package (decorator support enabled in the shared TS config); the worker is a long-running Node process ticking every 60 seconds (not cron) under systemd; single pnpm-workspace monorepo; up-to-~60-second enforcement latency is accepted and **no** app-to-worker poke/notify channel may be added; reconcile idempotently rather than detecting schedule edges.
+- **Locked decisions from the work order** (binding): TypeScript everywhere; SvelteKit; installable PWA via the Vite PWA plugin with **no push notifications**; SQLite as the single source of truth; TypeORM with entities in the shared package (decorator support enabled in the shared TS config); the worker is a long-running Node process ticking on an interval (not cron) under systemd; single pnpm-workspace monorepo; enforcement latency of up to one tick is accepted and **no** app-to-worker poke/notify channel may be added; reconcile idempotently rather than detecting schedule edges. *(The sketch's 60-second tick was revised to a 5-second default by self-review feedback — see Plan Clarifications.)*
 - **Locked decisions from the refinement addendum** (binding): styling with **Tailwind CSS** integrated via the `@tailwindcss/vite` plugin, plus the official `@tailwindcss/forms` and `@tailwindcss/typography` plugins; **Prettier** included in the project with **`prettier-plugin-tailwindcss`** for automatic class sorting; UI components built with **shadcn-svelte** for whatever components the app needs.
 - **OpenAPI spec findings** (from `docs/udm-api-openapi-spec.json`, the authoritative API reference for this plan):
   - Server URL: `https://192.168.1.1/proxy/network/integration`; all resource paths are site-scoped (`/v1/sites/{siteId}/…`).
   - Firewall policies expose `enabled: boolean` on the read model and on the required fields of the `PUT` ("Create or update firewall policy") body. `PATCH` supports only `loggingEnabled`, so **toggling requires GET → flip `enabled` → PUT the full object**.
   - Policies are zone-based: `source` requires a `zoneId` and supports a `networkFilter` traffic filter that matches by network IDs — this is how the manually created policy targets the Kids network. The app does not construct this; it only preserves it through the read-modify-write.
   - Supporting read endpoints exist for setup-time discovery of IDs: `GET /v1/sites`, `GET /v1/sites/{siteId}/networks`, `GET /v1/sites/{siteId}/firewall/zones`, `GET /v1/sites/{siteId}/firewall/policies`.
-  - The spec's `securitySchemes` is empty. The official Integration API is expected to authenticate via an `X-API-KEY` header with a key generated in the UniFi console — **VERIFY against the live controller** during implementation.
+  - The spec's `securitySchemes` is empty, but auth is **verified** (2026-08-07): a live `GET /v1/info` with the `X-API-KEY` header (key generated in the UniFi console) returned `{"applicationVersion":"10.5.67"}` — the header auth works and the controller version matches the spec.
+- **Configuration approach** (per self-review feedback): each package that needs runtime configuration reads a plain `.env` file local to that package — notably `apps/worker/.env` (gateway URL, API key, site ID, policy ID, SQLite path, timezone, tick interval). Every `.env` is git-ignored and spec'd by a committed `.env.example`; setup documentation includes copying `.env.example` to `.env` and filling in values. The user already holds a generated API key; it lives only in their local `.env`, never in the repo or docs.
 - **Manual UniFi setup owned by the user** (prerequisite, documented not automated): create the static block policy (source: Kids network via network filter in its zone; destination: external zone; action: Block; **no schedule**), generate an API key, and supply the policy ID, site ID, gateway URL, and API key to the app's environment configuration. Rule semantics: policy **enabled** ⇒ kids' internet **OFF**; policy **disabled** ⇒ internet **ON**.
 - Old approach being replaced: the previous device-group rule with in-UniFi scheduling is retired by the user as part of that manual setup.
 
@@ -70,7 +73,7 @@ flowchart LR
     subgraph Pi["Raspberry Pi"]
         WEB[SvelteKit server\napps/web]
         DB[(SQLite)]
-        WORKER[Reconcile worker\napps/worker\n60s tick, systemd]
+        WORKER[Reconcile worker\napps/worker\n5s tick, systemd]
         SHARED[packages/shared\nTypeORM entities + queries\nUniFi client]
     end
     UDM[UDM Pro\nIntegration API\nfirewall policy 'enabled' flag]
@@ -116,19 +119,19 @@ Entities per the work order's data model, treated as a starting point: **Profile
 
 **Objective**: The one place that knows how to talk to the UDM Pro, shaped by the OpenAPI spec's actual capabilities.
 
-A thin client over the official Integration API: base URL `https://<gateway>/proxy/network/integration`, authenticating with the API key on every request (expected `X-API-KEY` header — **VERIFY** against the live controller as the first implementation act of this component). Core operation: fetch firewall policy by ID, and set its `enabled` state via read-modify-write (`GET` the policy, mutate only `enabled`, `PUT` the complete object back). The client treats the policy body as opaque apart from `enabled`, preserving the user's manually configured Kids-network targeting untouched. Because the UDM Pro serves a self-signed certificate on the LAN, the client must support the local TLS trust situation explicitly (pinned/insecure-local handling confined to this client). The proof gate from the work order applies: demonstrate a manual enable/disable round-trip from the Pi before any dependent work proceeds.
+A thin client over the official Integration API: base URL `https://<gateway>/proxy/network/integration`, authenticating with the API key via the `X-API-KEY` header on every request (verified working against the live controller on 2026-08-07). Core operation: fetch firewall policy by ID, and set its `enabled` state via read-modify-write (`GET` the policy, mutate only `enabled`, `PUT` the complete object back). The client treats the policy body as opaque apart from `enabled`, preserving the user's manually configured Kids-network targeting untouched. Because the UDM Pro serves a self-signed certificate on the LAN, the client must support the local TLS trust situation explicitly (pinned/insecure-local handling confined to this client). The proof gate from the work order applies: demonstrate a manual enable/disable round-trip from the Pi before any dependent work proceeds.
 
 ### Reconcile Worker (apps/worker)
 
-**Objective**: Sole enforcer — converge reality to intent once a minute, forever.
+**Objective**: Sole enforcer — converge reality to intent every tick, forever.
 
-A long-running Node process: open the shared data source, then loop every 60 seconds. Each tick, for every profile: read windows and overrides, compute desired state via the shared function, and idempotently set the policy's `enabled` flag (internet ON ⇒ policy disabled; OFF ⇒ enabled) — no edge detection, no memory of previous ticks. Each tick is wrapped so a transient UniFi or database error logs and waits for the next tick rather than killing the process. Ships with a systemd unit (`Restart=always`, `EnvironmentFile` for secrets, `WantedBy=multi-user.target`) and documented enable steps. The worker is the only UniFi caller in the system.
+A long-running Node process: open the shared data source, then loop on a configurable interval — **default 5 seconds**, read from an environment variable in `apps/worker/.env` — so schedule and override changes are picked up nearly instantly. Each tick, for every profile: read windows and overrides, compute desired state via the shared function, and reconcile the policy's `enabled` flag (internet ON ⇒ policy disabled; OFF ⇒ enabled) — no edge detection, no memory of previous ticks. Because ticks are frequent, reconciliation reads the policy first and only issues the `PUT` when the actual state differs from the desired state, so the gateway sees a write only on real transitions, not every 5 seconds. Each tick is wrapped so a transient UniFi or database error logs and waits for the next tick rather than killing the process. Ships with a systemd unit (`Restart=always`, `EnvironmentFile` pointing at the worker's `.env`, `WantedBy=multi-user.target`) and documented enable steps. The worker is the only UniFi caller in the system.
 
 ### SvelteKit App (apps/web)
 
 **Objective**: A dead-simple phone UI for the least technical household member; a pure database front-end.
 
-Server-side endpoints and form actions perform all reads/writes; UniFi credentials never reach the browser (the web app holds no UniFi credentials at all — it never calls the gateway). UI, in priority order: an at-a-glance status per profile ("Kids' internet: ON until 8:00 PM" / "OFF"), big one-tap buttons — **+15 min**, **+5 min**, **Pause now**, **Allow now** — that create or extend Override rows, and a weekly schedule editor for ScheduleWindows (may be denser since the user owns it, but stays legible). Status shown is the app's computed intent from the same shared desired-state function; the UI communicates that changes take effect within about a minute.
+Server-side endpoints and form actions perform all reads/writes; UniFi credentials never reach the browser (the web app holds no UniFi credentials at all — it never calls the gateway). UI, in priority order: an at-a-glance status per profile ("Kids' internet: ON until 8:00 PM" / "OFF"), big one-tap buttons — **+15 min**, **+5 min**, **Pause now**, **Allow now** — that create or extend Override rows, and a weekly schedule editor for ScheduleWindows (may be denser since the user owns it, but stays legible). Status shown is the app's computed intent from the same shared desired-state function; with the worker's 5-second tick, changes take effect nearly instantly.
 
 Styling and components (per the refinement addendum): Tailwind CSS wired through the `@tailwindcss/vite` plugin in the SvelteKit Vite config, with the official `@tailwindcss/forms` and `@tailwindcss/typography` plugins enabled; UI built from **shadcn-svelte** components (initialized in `apps/web`, adding only the components actually used — buttons, cards, dialogs, form controls as needed). Repo-wide **Prettier** with `prettier-plugin-tailwindcss` keeps class lists sorted; formatting configuration lives at the workspace root so all packages share it.
 
@@ -143,8 +146,6 @@ Vite PWA plugin provides the manifest and service worker so the app installs to 
 <details>
 <summary>Technical Risks</summary>
 
-- **Auth scheme unverified**: the spec declares no security scheme; the assumed `X-API-KEY` header could differ on this controller build.
-    - **Mitigation**: verify auth with a trivial read (`GET /v1/info` or `/v1/sites`) from the Pi before writing the client proper; the work order's VERIFY discipline makes this the first step of the UniFi component.
 - **Read-modify-write PUT round-trip fidelity**: the PUT body requires the full policy object; if the read model and write model diverge (extra read-only fields, `metadata`), a naive echo-back could be rejected or drop settings.
     - **Mitigation**: prove the GET→flip→PUT round-trip manually against a throwaway/actual policy early (the plan's explicit proof gate), and strip read-only fields per the spec's "Create or update firewall policy" schema.
 - **Controller upgrades shifting the API**: the Integration API is versioned with the Network application; an upgrade could change schemas.
@@ -152,7 +153,7 @@ Vite PWA plugin provides the manifest and service worker so the app installs to 
 - **Self-signed TLS on the gateway**: Node will reject the UDM Pro's local certificate by default.
     - **Mitigation**: handle trust explicitly inside the UniFi client only, never process-wide.
 - **SQLite concurrent access** (web app and worker share one file):
-    - **Mitigation**: two processes with brief, infrequent transactions; enable WAL mode and rely on TypeORM's serialized access — well within SQLite's comfort zone.
+    - **Mitigation**: two processes with brief transactions (the worker's 5-second reads are trivial; writes happen only on user actions and state transitions); enable WAL mode and rely on TypeORM's serialized access — well within SQLite's comfort zone.
 
 </details>
 
@@ -173,7 +174,7 @@ Vite PWA plugin provides the manifest and service worker so the app installs to 
 
 - **Worker down ⇒ frozen state** (whatever the policy was last set to persists):
     - **Mitigation**: systemd `Restart=always` plus boot enablement; the reconcile model self-heals to correct state on the first tick after any outage.
-- **Manual edits in the UniFi console fighting the worker**: a hand-toggled policy is overwritten within a minute.
+- **Manual edits in the UniFi console fighting the worker**: a hand-toggled policy is overwritten within seconds.
     - **Mitigation**: documented expectation — the app is the sole owner of this policy's `enabled` flag; UniFi-side changes to it are unsupported.
 
 </details>
@@ -182,7 +183,7 @@ Vite PWA plugin provides the manifest and service worker so the app installs to 
 
 ### Primary Success Criteria
 
-1. Toggling works end-to-end: with the worker running, changing intent in the database (schedule or override) results in the UniFi firewall policy's `enabled` flag matching the computed desired state within one tick (~60 seconds), verified against the live UDM Pro.
+1. Toggling works end-to-end: with the worker running, changing intent in the database (schedule or override) results in the UniFi firewall policy's `enabled` flag matching the computed desired state within one tick (default 5 seconds), verified against the live UDM Pro.
 2. The weekly schedule is enforced: internet is ON for the Kids network profile during defined ScheduleWindows and OFF outside them, with overrides (`extend`, `allow_now`, `block_now`) taking precedence per the defined semantics until `effectiveUntil`.
 3. The PWA installs to a phone home screen, launches fullscreen, and its status view and one-tap buttons (+15, +5, Pause now, Allow now) work — a non-technical user can change access without seeing UniFi.
 4. The worker runs under systemd, survives a reboot and a forced crash, and a transient UniFi outage produces a logged error and successful reconciliation on a later tick, not a dead process.
@@ -193,7 +194,7 @@ Vite PWA plugin provides the manifest and service worker so the app installs to 
 Concrete verification steps to execute after all tasks are complete (on/against the deployment environment where noted):
 
 1. **UniFi round-trip**: run a small script (or the shared client via a REPL/CLI entry) with the configured env to `GET` the block policy by ID, flip `enabled`, `PUT` it back, re-`GET` to confirm the change, then restore. Capture the before/after `enabled` values in output.
-2. **Worker reconciliation**: with the worker running under systemd, insert a `block_now` override via the web UI (or direct DB write), then poll the policy over the Integration API and confirm `enabled: true` appears within ~90 seconds; delete/expire the override during an allowed window and confirm `enabled: false` follows on a subsequent tick. `journalctl` output for the unit shows per-tick reconcile logs and no crash.
+2. **Worker reconciliation**: with the worker running under systemd, insert a `block_now` override via the web UI (or direct DB write), then poll the policy over the Integration API and confirm `enabled: true` appears within ~15 seconds; delete/expire the override during an allowed window and confirm `enabled: false` follows on a subsequent tick. `journalctl` output for the unit shows reconcile logs, writes to the gateway only on state transitions (not every tick), and no crash.
 3. **Desired-state unit tests**: run the shared package's test suite covering window boundaries, midnight-adjacent windows, each override type's precedence, expired overrides, and a DST transition date — all green.
 4. **Web UI exercise**: using Playwright (or the playwright-cli skill) against the running app: load the status page and screenshot the profile status; tap **+15 min** and verify a new/extended `extend` Override row exists in SQLite (query via `sqlite3`) and the status text updates; edit a schedule window in the editor and verify the `ScheduleWindow` row changed.
 5. **PWA installability**: fetch the deployed app's web manifest and service-worker registration over HTTP (curl + browser devtools audit) confirming installability criteria; verify the iOS "Add to Home Screen" instructions are present in the README.
@@ -202,9 +203,9 @@ Concrete verification steps to execute after all tasks are complete (on/against 
 
 ## Documentation
 
-- **README.md** (new, repo root): what the system is, the manual UniFi setup checklist (create the Kids-network block policy with no schedule, generate the API key, collect site/policy IDs), environment configuration for web and worker, pnpm/build/run instructions, systemd install/enable steps, and iOS/Android install-to-home-screen notes.
+- **README.md** (new, repo root): what the system is, the manual UniFi setup checklist (create the Kids-network block policy with no schedule, generate the API key, collect site/policy IDs), environment configuration for web and worker — including copying each package's `.env.example` to `.env` and filling in values — pnpm/build/run instructions, systemd install/enable steps, and iOS/Android install-to-home-screen notes.
 - **Systemd unit file** shipped in-repo with commented `EnvironmentFile` usage.
-- **`.env.example`** documenting every required variable (gateway URL, API key, site ID, policy ID, SQLite path, timezone) without secrets.
+- **`.env.example` files** committed per package that needs configuration — notably `apps/worker/.env.example` documenting every required variable (gateway URL, API key, site ID, policy ID, SQLite path, timezone, tick interval) without secret values; actual `.env` files are git-ignored.
 - **AGENTS.md / CLAUDE.md** (new, repo root): monorepo layout, the "worker is the sole UniFi caller" and "no poke channel" invariants, pointer to `docs/udm-api-openapi-spec.json` as the API reference, and locked decisions so future AI-assisted work does not relitigate them.
 
 ## Resource Requirements
@@ -235,10 +236,12 @@ Integration with the existing household UniFi setup is deliberately minimal and 
 
 - The work order's fallback path (legacy `/proxy/network` cookie+CSRF API) is **not planned**: spec analysis confirmed the official Integration API supports the required toggle. If live verification ever contradicts this, the isolation of the UniFi client keeps the fallback a contained change — but it is out of scope unless proven necessary.
 - Do not add: push notifications, an app→worker notification channel, UniFi calls from the web app, in-UniFi scheduling, policy creation/discovery logic, or a connection-OK check (explicitly declined).
-- Enforcement latency of up to ~60 seconds is accepted by design; the UI should set that expectation rather than engineer around it.
+- Enforcement latency is one worker tick — default 5 seconds, configurable via `apps/worker/.env` — so changes feel nearly instant. The no-poke-channel rule stands; the frequent tick is the whole mechanism.
 - `Override.type` semantics to be finalized during implementation within the shared desired-state function: `extend` pushes the current/most recent allowed window's cutoff to `effectiveUntil`; `allow_now`/`block_now` force the state until `effectiveUntil` regardless of schedule; explicit precedence is defined and unit-tested there (single authority).
 
 ### Change Log
 
 - 2026-08-07: Refinement — locked in frontend/tooling decisions per user addendum: Tailwind CSS via `@tailwindcss/vite` with the official forms and typography plugins; Prettier added project-wide with `prettier-plugin-tailwindcss` for class sorting; shadcn-svelte adopted as the component library. Updated Background (locked decisions), the SvelteKit App component section, and Resource Requirements accordingly. No scope, architecture, or data-model changes.
 - 2026-08-07: Made the plan self-contained — inlined the repo layout tree and removed binding-by-reference language pointing at `screen-time-app-plan.md`, so the sketch file at the repo root can be deleted. `udm-api-openapi-spec.json` remains a required in-repo reference (later moved to `docs/`).
+- 2026-08-07: Applied self-review feedback — worker tick changed from 60 seconds to a 5-second default, configurable via environment variable; reconciliation now writes to the gateway only on state mismatch (a consequence of the faster tick); configuration formalized as per-package `.env` files with committed `.env.example` specs and a copy step in setup docs. The API key remains env-only and is never embedded in the repo. Latency references updated throughout.
+- 2026-08-07: Auth VERIFY item resolved — the user ran `GET /v1/info` against the live controller with the `X-API-KEY` header and received `{"applicationVersion":"10.5.67"}`. Auth scheme confirmed; controller version matches the in-repo spec. The "auth scheme unverified" technical risk was removed. One VERIFY item remains open: proving the GET→flip→PUT toggle round-trip on the firewall policy.
