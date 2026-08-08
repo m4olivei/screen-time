@@ -294,9 +294,9 @@ graph TD
 - ✔️ Task 07: Weekly schedule editor (depends on: 02, 06) — `completed`
 - ✔️ Task 08: PWA layer (manifest + service worker) (depends on: 06) — `completed`
 
-### Phase 6: Documentation
+### ✅ Phase 6: Documentation
 **Parallel Tasks:**
-- Task 09: Setup README and AGENTS.md (depends on: 05, 07, 08)
+- ✔️ Task 09: Setup README and AGENTS.md (depends on: 05, 07, 08) — `completed`
 
 ### Post-phase Actions
 
