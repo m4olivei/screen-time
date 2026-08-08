@@ -1,10 +1,16 @@
 import tailwindcss from '@tailwindcss/vite';
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	ssr: {
+		// Import the shared package at runtime instead of bundling it: bundling
+		// would inline TypeORM, whose require('better-sqlite3') then can't resolve
+		// from apps/web/build under pnpm's strict node_modules layout.
+		external: ['@screen-time/shared']
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({
@@ -14,9 +20,8 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-			// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
+			// adapter-node emits a standalone server to build/ (run with `node build`,
+			// listens on PORT, default 3000) so the Pi only needs production deps.
 			adapter: adapter()
 		}),
 		SvelteKitPWA({

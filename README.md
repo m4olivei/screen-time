@@ -138,7 +138,8 @@ pnpm run format        # prettier --write .
 pnpm dev               # web app dev server (root script; filters to apps/web)
 pnpm --filter worker dev     # worker with watch/restart (tsx)
 pnpm --filter worker start   # worker once, from TypeScript source
-pnpm --filter web preview    # serve the production build of the web app
+pnpm --filter web preview    # preview the production build (dev tool)
+node apps/web/build          # run the built web app standalone (adapter-node; PORT env, default 3000)
 ```
 
 Shared-package unit tests: `pnpm --filter @screen-time/shared test`.
@@ -151,6 +152,11 @@ The unit file `apps/worker/screen-time-worker.service` expects this layout:
 - Built once: `pnpm install && pnpm run build` (produces
   `/home/pi/screen-time/apps/worker/dist/index.js`)
 - Env file at `/home/pi/screen-time/apps/worker/.env` (copied from `.env.example`, filled in)
+
+Lighter alternative to building on the Pi: run `pnpm run build` on a dev machine, copy the repo to
+the Pi **excluding `node_modules`** (build outputs are platform-independent JS), then on the Pi run
+`pnpm install --prod` — it downloads a prebuilt ARM binary for `better-sqlite3` and skips all build
+tooling. The web app then runs with `node apps/web/build` (adapter-node, port 3000).
 
 Install and enable:
 
