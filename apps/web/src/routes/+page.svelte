@@ -1,10 +1,29 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import type { PageProps } from './$types.js';
 
 	let { data }: PageProps = $props();
+
+	const REFRESH_INTERVAL_MS = 30 * 1000;
+
+	// Status and button labels are computed at render time, so a page left open
+	// (or a PWA resumed from the background) can show stale state: refresh when
+	// the app returns to the foreground, and poll gently while visible.
+	onMount(() => {
+		const refreshIfVisible = () => {
+			if (document.visibilityState === 'visible') void invalidateAll();
+		};
+		document.addEventListener('visibilitychange', refreshIfVisible);
+		const interval = setInterval(refreshIfVisible, REFRESH_INTERVAL_MS);
+		return () => {
+			document.removeEventListener('visibilitychange', refreshIfVisible);
+			clearInterval(interval);
+		};
+	});
 
 	/** "Kids" → "Kids'", "Ana" → "Ana's" — for the "Kids' internet" headline. */
 	function possessive(name: string): string {
