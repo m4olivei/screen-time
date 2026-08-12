@@ -1,13 +1,18 @@
 # screen-time-worker.service — systemd unit for the reconcile worker.
 #
-# Expected install layout on the Raspberry Pi:
-#   - Repo checked out at /home/pi/screen-time
+# Expected install layout on the Raspberry Pi (see README "Deploying the worker"):
+#   - Dedicated system user `screen-time` owning the checkout and the database
+#   - Repo checked out at /opt/screen-time
 #   - Built once with: pnpm install && pnpm run build
-#     (produces /home/pi/screen-time/apps/worker/dist/index.js)
-#   - Env file at /home/pi/screen-time/apps/worker/.env (copy .env.example)
+#     (produces /opt/screen-time/apps/worker/dist/index.js)
+#   - Env file at /opt/screen-time/apps/worker/.env (copy .env.example)
+#
+# Using a different location or user? The User= line and the three absolute
+# paths below (WorkingDirectory=, EnvironmentFile=, ExecStart=) are the only
+# things to change — edit them before copying this file into /etc/systemd/system.
 #
 # Install:
-#   sudo cp /home/pi/screen-time/apps/worker/screen-time-worker.service /etc/systemd/system/
+#   sudo cp /opt/screen-time/apps/worker/screen-time-worker.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now screen-time-worker
 # Logs:
@@ -20,10 +25,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/screen-time/apps/worker
-EnvironmentFile=/home/pi/screen-time/apps/worker/.env
-ExecStart=/usr/bin/node /home/pi/screen-time/apps/worker/dist/index.js
+User=screen-time
+WorkingDirectory=/opt/screen-time/apps/worker
+EnvironmentFile=/opt/screen-time/apps/worker/.env
+ExecStart=/usr/bin/node /opt/screen-time/apps/worker/dist/index.js
 Restart=always
 RestartSec=5
 

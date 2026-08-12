@@ -151,22 +151,47 @@ Shared-package unit tests: `pnpm --filter @screen-time/shared test`.
 
 ## Deploying the worker on the Raspberry Pi (systemd)
 
-The unit file `apps/worker/screen-time-worker.service` expects this layout:
+The recommended layout is a dedicated system user that owns everything the app touches — the
+checkout, the env files, and the SQLite database — with the repo at `/opt/screen-time` (the
+[FHS](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch03s13.html) location for self-contained
+add-on software). The unit file `apps/worker/screen-time-worker.service` expects exactly this
+layout; if you use a different path or user, edit the `User=` line and the three absolute paths in
+the unit file before installing it.
 
-- Repo checked out at `/home/pi/screen-time`
-- Built once: `pnpm install && pnpm run build` (produces
-  `/home/pi/screen-time/apps/worker/dist/index.js`)
-- Env file at `/home/pi/screen-time/apps/worker/.env` (copied from `.env.example`, filled in)
-
-Lighter alternative to building on the Pi: run `pnpm run build` on a dev machine, copy the repo to
-the Pi **excluding `node_modules`** (build outputs are platform-independent JS), then on the Pi run
-`pnpm install --prod` — it downloads a prebuilt ARM binary for `better-sqlite3` and skips all build
-tooling. The web app then runs with `node apps/web/build` (adapter-node, port 3000).
-
-Install and enable:
+### 1. Create the service user and install location
 
 ```sh
-sudo cp /home/pi/screen-time/apps/worker/screen-time-worker.service /etc/systemd/system/
+sudo useradd --system --user-group --home-dir /opt/screen-time --shell /usr/sbin/nologin screen-time
+sudo mkdir -p /opt/screen-time
+sudo chown screen-time:screen-time /opt/screen-time
+```
+
+The user has no login shell; run commands as it with `sudo -u screen-time -H <command>`.
+
+### 2. Check out, build, and configure as the service user
+
+```sh
+sudo -u screen-time -H git clone <repo-url> /opt/screen-time
+cd /opt/screen-time
+sudo -u screen-time -H pnpm install
+sudo -u screen-time -H pnpm run build     # produces apps/worker/dist/index.js
+sudo -u screen-time -H mkdir -p data      # holds the SQLite file (default DB_PATH)
+sudo -u screen-time -H cp apps/worker/.env.example apps/worker/.env
+sudo -u screen-time -H cp apps/web/.env.example apps/web/.env
+# fill in both .env files (sudoedit -u screen-time, or edit as root)
+```
+
+Lighter alternative to building on the Pi: run `pnpm run build` on a dev machine, copy the repo to
+`/opt/screen-time` **excluding `node_modules`** (build outputs are platform-independent JS), chown
+it to `screen-time`, then run `sudo -u screen-time -H pnpm install --prod` — it downloads a
+prebuilt ARM binary for `better-sqlite3` and skips all build tooling. The web app then runs with
+`node apps/web/build` (adapter-node, port 3000), also as the `screen-time` user so it can write the
+shared database.
+
+### 3. Install and enable the unit
+
+```sh
+sudo cp /opt/screen-time/apps/worker/screen-time-worker.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now screen-time-worker
 ```
