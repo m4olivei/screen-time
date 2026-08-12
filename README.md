@@ -212,10 +212,16 @@ The unit restarts the worker automatically (`Restart=always`).
 ### 4. Install and enable the web app unit
 
 The web app runs as the same `screen-time` user (it writes the shared database) via
-`apps/web/screen-time-web.service`, which serves the adapter-node build on port 3000. **First edit
-the `ORIGIN=` line** in the unit file to the exact URL the app is reached at (e.g.
-`http://192.168.1.238:3000`) — SvelteKit rejects form POSTs (the override buttons) with a 403 when
-the request's origin doesn't match. Then:
+`apps/web/screen-time-web.service`, which serves the adapter-node build on port 80. Binding a
+privileged port as a non-root user works via `AmbientCapabilities=CAP_NET_BIND_SERVICE` in the
+unit — no root and no reverse proxy. **Before installing, edit the `ORIGIN=` line** in the unit
+file to the exact URL the app is browsed at (e.g. `http://screen-time.example.com`) — SvelteKit
+rejects form POSTs (the override buttons) with a 403 when the request's origin doesn't match.
+
+Give that hostname a stable LAN-only resolution via gateway config (no public DNS involved) — on
+a UniFi gateway: a **DHCP reservation** for the Pi (Client Devices → the Pi → Settings → Fixed IP
+Address) plus a **local DNS record** (Settings → search "DNS" → Host (A) record mapping the
+hostname to the Pi's reserved IP). Install:
 
 ```sh
 sudo cp /opt/screen-time/apps/web/screen-time-web.service /etc/systemd/system/
@@ -223,8 +229,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now screen-time-web
 ```
 
-Logs: `journalctl -u screen-time-web -f`. Verify with `curl -s http://localhost:3000/` on the Pi,
-then open `http://<pi-address>:3000` from a phone/laptop on the LAN.
+Logs: `journalctl -u screen-time-web -f`. Verify with `curl -s http://localhost/` on the Pi, then
+open the app's URL from a phone on the LAN and tap an override button (the POST is what exercises
+`ORIGIN`, not the page load).
 
 ## Install the app on a phone
 
