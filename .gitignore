@@ -23,3 +23,14 @@ build/
 *.log
 .DS_Store
 vite.config.ts.timestamp-*
+
+# Pi deployment: the SQLite database lives in data/ (default DB_PATH), and the
+# screen-time service user's HOME is the checkout (/opt/screen-time), so tool
+# dotfiles (pnpm/corepack/npm caches, shell histories) land in the repo root.
+/data/
+/.cache/
+/.local/
+/.npm/
+/.bash_history
+/.sqlite_history
+/.viminfo
