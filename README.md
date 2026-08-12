@@ -173,13 +173,18 @@ The user has no login shell; run commands as it with `sudo -u screen-time -H <co
 ```sh
 sudo -u screen-time -H git clone <repo-url> /opt/screen-time
 cd /opt/screen-time
-sudo -u screen-time -H pnpm install
-sudo -u screen-time -H pnpm run build     # produces apps/worker/dist/index.js
 sudo -u screen-time -H mkdir -p data      # holds the SQLite file (default DB_PATH)
 sudo -u screen-time -H cp apps/worker/.env.example apps/worker/.env
 sudo -u screen-time -H cp apps/web/.env.example apps/web/.env
 # fill in both .env files (sudoedit -u screen-time, or edit as root)
+sudo -u screen-time -H pnpm install
+sudo -u screen-time -H pnpm run build     # produces apps/worker/dist/index.js
 ```
+
+The `.env` files must exist **before** the build: the web app validates its required env vars at
+module load, and SvelteKit's build analyses the server bundle by importing it, so `vite build`
+fails with `Missing required environment variable DB_PATH` if `apps/web/.env` isn't filled in yet.
+(Values are not baked into the build — they are still read at runtime.)
 
 Lighter alternative to building on the Pi: run `pnpm run build` on a dev machine, copy the repo to
 `/opt/screen-time` **excluding `node_modules`** (build outputs are platform-independent JS), chown
