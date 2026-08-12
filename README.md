@@ -149,14 +149,14 @@ node apps/web/build          # run the built web app standalone (adapter-node; P
 
 Shared-package unit tests: `pnpm --filter @screen-time/shared test`.
 
-## Deploying the worker on the Raspberry Pi (systemd)
+## Deploying on the Raspberry Pi (systemd)
 
 The recommended layout is a dedicated system user that owns everything the app touches — the
 checkout, the env files, and the SQLite database — with the repo at `/opt/screen-time` (the
 [FHS](https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch03s13.html) location for self-contained
-add-on software). The unit file `apps/worker/screen-time-worker.service` expects exactly this
-layout; if you use a different path or user, edit the `User=` line and the three absolute paths in
-the unit file before installing it.
+add-on software). Two unit files, `apps/worker/screen-time-worker.service` and
+`apps/web/screen-time-web.service`, expect exactly this layout; if you use a different path or
+user, edit the `User=` line and the absolute paths in both unit files before installing them.
 
 ### 1. Create the service user and install location
 
@@ -193,7 +193,7 @@ prebuilt ARM binary for `better-sqlite3` and skips all build tooling. The web ap
 `node apps/web/build` (adapter-node, port 3000), also as the `screen-time` user so it can write the
 shared database.
 
-### 3. Install and enable the unit
+### 3. Install and enable the worker unit
 
 ```sh
 sudo cp /opt/screen-time/apps/worker/screen-time-worker.service /etc/systemd/system/
@@ -208,6 +208,23 @@ journalctl -u screen-time-worker -f
 ```
 
 The unit restarts the worker automatically (`Restart=always`).
+
+### 4. Install and enable the web app unit
+
+The web app runs as the same `screen-time` user (it writes the shared database) via
+`apps/web/screen-time-web.service`, which serves the adapter-node build on port 3000. **First edit
+the `ORIGIN=` line** in the unit file to the exact URL the app is reached at (e.g.
+`http://192.168.1.238:3000`) — SvelteKit rejects form POSTs (the override buttons) with a 403 when
+the request's origin doesn't match. Then:
+
+```sh
+sudo cp /opt/screen-time/apps/web/screen-time-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now screen-time-web
+```
+
+Logs: `journalctl -u screen-time-web -f`. Verify with `curl -s http://localhost:3000/` on the Pi,
+then open `http://<pi-address>:3000` from a phone/laptop on the LAN.
 
 ## Install the app on a phone
 

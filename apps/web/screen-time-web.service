@@ -1,0 +1,38 @@
+# screen-time-web.service — systemd unit for the SvelteKit web app (adapter-node).
+#
+# Expected install layout on the Raspberry Pi (see README "Deploying on the
+# Raspberry Pi"): same as the worker unit — dedicated `screen-time` system
+# user, repo at /opt/screen-time, built once with `pnpm install && pnpm run
+# build` (produces the standalone server at /opt/screen-time/apps/web/build).
+# The app reads apps/web/.env itself at startup; no EnvironmentFile= needed.
+#
+# BEFORE INSTALLING: set ORIGIN below to the URL the app is reached at.
+# SvelteKit checks form POSTs (the override buttons) against this origin and
+# rejects them with a 403 if it is wrong or unset.
+#
+# Install:
+#   sudo cp /opt/screen-time/apps/web/screen-time-web.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now screen-time-web
+# Logs:
+#   journalctl -u screen-time-web -f
+
+[Unit]
+Description=Household screen time web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=screen-time
+WorkingDirectory=/opt/screen-time/apps/web
+Environment=PORT=3000
+# Edit to the address you browse to (e.g. http://192.168.1.238:3000 or your
+# Pi's mDNS/DNS name). Must match exactly, including scheme and port.
+Environment=ORIGIN=http://CHANGE-ME:3000
+ExecStart=/usr/bin/node /opt/screen-time/apps/web/build
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
