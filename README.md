@@ -59,6 +59,11 @@ must be **created fresh in ZBF**, not carried over from a migrated legacy rule.
      https://192.168.1.1/proxy/network/integration/v1/sites/<site-id>/firewall/policies
    ```
 
+4. **(Optional) Export the OpenAPI spec** for development reference: the UniFi console's API
+   documentation page offers the Integration API's OpenAPI spec for download. Save it as
+   `docs/udm-api-openapi-spec.json` — it is not committed to the repo (it is Ubiquiti's file),
+   but `AGENTS.md` points AI tooling at that path as the API contract reference.
+
 ## Setup
 
 Requirements: Node.js (with `corepack`/pnpm; the repo pins `pnpm@11.20.0`) and network access from

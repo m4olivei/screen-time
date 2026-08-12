@@ -26,7 +26,7 @@ packages/
                   UniFi Integration API client (src/unifi/). scripts/ holds standalone proof
                   scripts (toggle-proof.ts, db-smoke.ts, writable-policy-check.ts).
 docs/
-  udm-api-openapi-spec.json   The UniFi API contract (see below).
+  udm-api-openapi-spec.json   The UniFi API contract (see below; not committed).
 ```
 
 ## Invariants (binding)
@@ -53,7 +53,9 @@ The block policy is created manually in the UniFi console; the app only stores i
 ## API reference
 
 `docs/udm-api-openapi-spec.json` (UniFi Network API **v10.5.67**) is the authoritative reference
-for the UniFi Integration API. Key facts already baked into the client:
+for the UniFi Integration API. The spec is **not committed** (it is Ubiquiti's file, kept out of
+the public repo); export it from your own UniFi console's API documentation page and drop it at
+that path. Key facts already baked into the client:
 
 - Auth: `X-API-KEY` header. Server base path: `/proxy/network/integration`, paths site-scoped
   (`/v1/sites/{siteId}/…`).
