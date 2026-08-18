@@ -8,6 +8,9 @@ build/
 .svelte-kit/
 .vercel/
 
+# OpenTofu provider plugins (HCL is formatted with `tofu fmt`, not Prettier)
+infra/**/.terraform/
+
 # Reference documents kept verbatim
 docs/udm-api-openapi-spec.json
 

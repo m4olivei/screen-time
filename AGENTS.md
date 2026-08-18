@@ -25,6 +25,10 @@ packages/
                   desired-state logic (src/desired-state.ts, src/next-transition.ts), and the
                   UniFi Integration API client (src/unifi/). scripts/ holds standalone proof
                   scripts (toggle-proof.ts, db-smoke.ts, writable-policy-check.ts).
+infra/
+  cloudflare/     OpenTofu config for the Cloudflare Tunnel + Access setup that publishes the
+                  web app (tunnel + ingress, proxied DNS record, Google IdP, Access app and
+                  policy). Applied by hand; state is local and git-ignored.
 docs/
   udm-api-openapi-spec.json   The UniFi API contract (see below; not committed).
 ```
@@ -40,6 +44,11 @@ docs/
 - **SQLite is the only shared state.** The web app and worker communicate exclusively through the
   shared database file (WAL mode); there is no IPC, HTTP, queue, or file signal between them.
 - **No push notifications.** The PWA is installable but deliberately excludes push.
+- **Authentication is enforced at the Cloudflare edge only.** Cloudflare Access challenges every
+  request before it reaches the tunnel; the app itself has no auth, no sessions, and no
+  `hooks.server.ts`, and must not grow any. The web app therefore listens on `127.0.0.1` (see
+  `apps/web/screen-time-web.service`) — the tunnel connector is its only client, and a port open to
+  the LAN would be an unauthenticated way around Access. Do not "helpfully" bind `0.0.0.0` again.
 
 ## Do not add (explicitly declined during planning)
 
@@ -78,6 +87,16 @@ that path. Key facts already baked into the client:
   (`apps/worker/screen-time-worker.service`); it reconciles idempotently rather than detecting
   schedule edges.
 - Tick default 5000 ms, env-configurable (`TICK_INTERVAL_MS`).
+- Public exposure and authentication: **Cloudflare Tunnel + Cloudflare Access**, provisioned with
+  **OpenTofu** in `infra/cloudflare/` (provider `cloudflare/cloudflare` v5 — its schema differs
+  substantially from v4). No reverse proxy on the Pi, no router port forward, no origin-side JWT
+  verification. Identity providers: Google (an OAuth client owned in Google Cloud) plus Cloudflare's
+  built-in one-time PIN as a break-glass path; the Access policy allows a fixed list of email
+  addresses, so the choice of provider grants no extra reach.
+- Secrets are never committed. The Cloudflare API token lives in `CLOUDFLARE_API_TOKEN`, real values
+  in a git-ignored `terraform.tfvars` (spec'd by `terraform.tfvars.example`), and the tunnel token in
+  `/etc/cloudflared/token` on the Pi. OpenTofu state is local, plaintext, and git-ignored — treat it
+  as a password file.
 
 ## Key semantics
 

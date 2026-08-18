@@ -6,11 +6,18 @@
 # build` (produces the standalone server at /opt/screen-time/apps/web/build).
 # The app reads apps/web/.env itself at startup; no EnvironmentFile= needed.
 #
-# BEFORE INSTALLING: set ORIGIN below to the exact URL the app is reached at
-# (scheme, host, and port if non-default — e.g. http://screen-time.example.com,
-# resolving via a local DNS record on the gateway; see README). SvelteKit
-# checks form POSTs (the override buttons) against this origin and rejects
-# them with a 403 if it is wrong or unset.
+# The app is published to the internet through Cloudflare Tunnel + Cloudflare
+# Access (see README "Publishing the app with Cloudflare Tunnel"), so it listens
+# on loopback only: the tunnel connector on the same host is its sole client.
+# That is deliberate — authentication is enforced at the Cloudflare edge and the
+# app itself has none, so a port open to the LAN would be an unauthenticated way
+# around it.
+#
+# BEFORE INSTALLING: set ORIGIN below to the exact public URL the app is browsed
+# at — https:// plus the Cloudflare hostname, e.g.
+# https://screen-time.example.com — with no trailing slash and no path.
+# SvelteKit checks form POSTs (the override buttons) against this origin and
+# rejects them with a 403 if it is wrong or unset.
 #
 # Install:
 #   sudo cp /opt/screen-time/apps/web/screen-time-web.service /etc/systemd/system/
@@ -28,11 +35,9 @@ Wants=network-online.target
 Type=simple
 User=screen-time
 WorkingDirectory=/opt/screen-time/apps/web
-Environment=PORT=80
-Environment=ORIGIN=http://CHANGE-ME
-# Port 80 is privileged; grant the non-root service user just the capability
-# to bind it (no root, no reverse proxy needed).
-AmbientCapabilities=CAP_NET_BIND_SERVICE
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=ORIGIN=https://CHANGE-ME
 ExecStart=/usr/bin/node /opt/screen-time/apps/web/build
 Restart=always
 RestartSec=5

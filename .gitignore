@@ -9,6 +9,18 @@ review.guide.xml
 .env.*
 !.env.example
 
+# OpenTofu (infra/cloudflare): local state holds the tunnel token and secret and
+# the Google OAuth client secret; tfvars holds the household emails and account
+# IDs. Committed specs live in terraform.tfvars.example. Note .terraform.lock.hcl
+# IS committed — it contains no secrets and pins provider versions.
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/*.tfvars
+!infra/**/*.tfvars.example
+infra/**/.terraform.tfstate.lock.info
+infra/**/crash*.log
+
 # Dependencies
 node_modules/
 

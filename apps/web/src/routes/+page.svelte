@@ -4,18 +4,32 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import type { PageProps } from './$types.js';
+	import type { PageProps, SubmitFunction } from './$types.js';
 
 	let { data }: PageProps = $props();
 
 	const REFRESH_INTERVAL_MS = 30 * 1000;
+
+	// Background fetches (the poll below and use:enhance form posts) fail outright
+	// once the Cloudflare Access session expires: Access answers with a redirect to
+	// its login page on another origin, which CORS then blocks. A full navigation
+	// would follow that redirect and show the login screen, so reload — otherwise
+	// the poll dies silently on stale data and the override buttons land on a
+	// "Failed to fetch" error page. Only once per page load, so a plain network
+	// outage doesn't turn into a reload every tick.
+	let recovering = false;
+	function recoverFromFailedFetch() {
+		if (recovering) return;
+		recovering = true;
+		location.reload();
+	}
 
 	// Status and button labels are computed at render time, so a page left open
 	// (or a PWA resumed from the background) can show stale state: refresh when
 	// the app returns to the foreground, and poll gently while visible.
 	onMount(() => {
 		const refreshIfVisible = () => {
-			if (document.visibilityState === 'visible') void invalidateAll();
+			if (document.visibilityState === 'visible') invalidateAll().catch(recoverFromFailedFetch);
 		};
 		document.addEventListener('visibilitychange', refreshIfVisible);
 		const interval = setInterval(refreshIfVisible, REFRESH_INTERVAL_MS);
@@ -24,6 +38,18 @@
 			clearInterval(interval);
 		};
 	});
+
+	const submitOverride: SubmitFunction = () => {
+		return async ({ result, update }) => {
+			// 'error' here means the POST itself never completed (see above); action
+			// failures come back as 'failure' and should render normally.
+			if (result.type === 'error') {
+				recoverFromFailedFetch();
+				return;
+			}
+			await update();
+		};
+	};
 
 	/** "Kids" → "Kids'", "Ana" → "Ana's" — for the "Kids' internet" headline. */
 	function possessive(name: string): string {
@@ -59,7 +85,7 @@
 				<Card.Description>Changes take effect within seconds.</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				<form method="POST" use:enhance class="grid grid-cols-2 gap-3">
+				<form method="POST" use:enhance={submitOverride} class="grid grid-cols-2 gap-3">
 					<input type="hidden" name="profileId" value={profile.id} />
 					<Button
 						type="submit"

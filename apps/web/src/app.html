@@ -5,7 +5,17 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
 		<meta name="theme-color" content="#0f172a" />
-		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+		<!-- crossorigin="use-credentials" makes the browser send cookies with the
+		     manifest request. Without it the fetch is credential-less, so Cloudflare
+		     Access sees no session, redirects it cross-origin to the login page, and
+		     the manifest silently fails to load — installing the PWA then produces no
+		     name, no icons and no standalone display. Same-origin + use-credentials
+		     needs no CORS headers on the response, so this is a no-op on the LAN. -->
+		<link
+			rel="manifest"
+			href="%sveltekit.assets%/manifest.webmanifest"
+			crossorigin="use-credentials"
+		/>
 		<!-- iOS "Add to Home Screen" fullscreen support (not injected by the PWA plugin) -->
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/icons/apple-touch-icon.png" />
 		<meta name="mobile-web-app-capable" content="yes" />

@@ -1,0 +1,33 @@
+# Copy to terraform.tfvars and fill in real values (the .tfvars itself is
+# git-ignored). The Cloudflare API token is NOT set here — export it instead:
+#
+#   export CLOUDFLARE_API_TOKEN=...
+#
+# so it stays out of both the repo and the shell history file of a text editor.
+
+# Dashboard overview page, right-hand column.
+cloudflare_account_id = "CHANGE-ME"
+cloudflare_zone_id    = "CHANGE-ME"
+
+# The zone's apex domain. The app is published at <subdomain>.<zone_name>.
+zone_name = "example.com"
+# subdomain = "screen-time"   # default; must stay a single label
+
+# The <team> in https://<team>.cloudflareaccess.com, chosen when the Zero Trust
+# organization was created.
+zero_trust_team_name = "CHANGE-ME"
+
+# Only these addresses get in. Everyone else is denied, whichever login method
+# they pick.
+allowed_emails = [
+  "you@example.com",
+  "partner@example.com",
+]
+
+# Google Cloud OAuth 2.0 web client (see README for how to create it).
+google_client_id     = "CHANGE-ME.apps.googleusercontent.com"
+google_client_secret = "CHANGE-ME"
+
+# Defaults are usually right; override only if the Pi's web app moves.
+# origin_service_url      = "http://127.0.0.1:3000"
+# access_session_duration = "730h"

@@ -68,7 +68,18 @@ export default defineConfig({
 						options: {
 							cacheName: 'pages',
 							networkTimeoutSeconds: 5,
-							expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 }
+							expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 },
+							plugins: [
+								{
+									// Navigation requests use redirect: 'manual' inside a service
+									// worker, so an expired Cloudflare Access session comes back as
+									// an opaque redirect (status 0) — which NetworkFirst's default
+									// cacheOkAndOpaquePlugin would happily store and later serve as
+									// the offline fallback. Cache real responses only.
+									cacheWillUpdate: async ({ response }) =>
+										response.status === 200 && !response.redirected ? response : null
+								}
+							]
 						}
 					}
 				]
