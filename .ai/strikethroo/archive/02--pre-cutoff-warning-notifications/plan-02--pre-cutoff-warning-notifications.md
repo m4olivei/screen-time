@@ -251,3 +251,89 @@ After Phase 2, run the plan's Self Validation steps 1 through 4 (static checks, 
 ### Execution Summary
 - Total Phases: 3
 - Total Tasks: 5
+
+## Execution Summary
+
+**Status**: ✅ Completed Successfully
+**Completed Date**: 2026-08-19
+
+### Results
+
+All five tasks completed across three phases on `feature/2--pre-cutoff-warning-notifications`.
+
+- **`packages/shared/src/warnings.ts`** — the pure authority for warning timing. `computeDueWarnings`
+  picks at most one threshold per tick from `[30,15,10,5,2,1]` and returns every due threshold as
+  handled; `describeWarning` owns the text and the TV display duration (60 s for the final minute,
+  15 s otherwise). The cutoff is an input, never re-derived, so `computeNextTransition` remains the
+  single authority. 57 unit tests pass across the shared package.
+- **`WarningLog` entity + query helpers** — `warning_log`, unique across
+  `(profileId, cutoffAt, thresholdMinutes)`, with duplicate-tolerant recording and per-tick pruning.
+  Because `cutoffAt` is part of the identity, an override that moves the cutoff re-arms the ladder.
+- **`packages/shared/src/notify/`** — TvOverlay and ntfy clients behind one `Notifier` interface,
+  global `fetch`, 3 s `AbortSignal` timeout, resolve-`false`-never-throw.
+- **`apps/worker/src/index.ts`** — both transport URLs optional (unset ⇒ that transport disabled and
+  the worker behaves exactly as before), transports built once at startup and named in the startup
+  log, warning evaluation after the reconcile inside its own `try`/`catch`, and thresholds recorded
+  before any send is attempted.
+- **Documentation** — `AGENTS.md`'s no-push-notifications invariant narrowed rather than lifted (the
+  PWA still ships no web push; the worker may send outbound notifications), `warnings.ts` added to
+  Key Semantics, and an explicit "sole UniFi caller ≠ sole HTTP caller" note. `README.md` gained the
+  optional env rows and a full setup section: generating a high-entropy ntfy topic and why the topic
+  name is a secret, per-platform client install with the PWA preferred on desktop, the
+  browser-must-be-running caveat, and the TvOverlay permissions and DHCP reservation the Bravia needs.
+
+Commits: `9b56166` (shared foundations), `0b1b33c` (worker integration), `f13cf89` (documentation).
+
+### Noteworthy Events
+
+**Code review gate: SKIPPED.** Verbatim result:
+`{"kind":"skipped","reason":"no-reviewer-candidate","detail":"No harness other than `claude` is installed and responsive, so the review gate was skipped."}`
+Zero rounds ran; no findings were recorded or applied. This plan's diff therefore had no independent
+second-harness review.
+
+**A Self Validation run produced a correct-looking result for the wrong reason, and was redone.**
+The restart-suppression check (Self Validation step 6) was first run via a nested background
+invocation. The outer command exited immediately and orphaned the inner script, which survived and
+started a second worker against the same throwaway database. The final `warning_log` table looked
+exactly right — all six rungs, correct order — but the `handledAt` timestamps showed the stale
+thresholds were recorded a minute *before* the worker under test started. The orphan had done the
+suppressing; the measured worker had nothing left to suppress. Re-run cleanly on a fresh database
+and port as a single tracked process, with an explicit assertion that zero warning rows exist while
+the worker is down. The clean run is conclusive: the worker's **first** tick, 49 ms after startup,
+logged `handled=[30,15,10,5] send=none`, then sent at 2 minutes and 1 minute on schedule. The
+lesson generalises — a green artifact is not evidence unless its provenance is checked.
+
+**The household domain was purged from unpushed history, with approval.** Task 5's no-personal-values
+gate failed: the real domain appeared in the plan's verbatim Original Work Order and in the
+clarification row rejecting it as a topic name, committed at the base commit. The real TV address was
+never committed anywhere, and all deliverable surfaces were clean. Because the commit was local-only
+(`origin/main` was two commits behind), the user approved redacting the domain to a placeholder and
+rewriting history. Verified afterwards: zero blobs across all reachable objects contain the domain or
+the TV address. Task 5's acceptance criterion was rewritten to scope the check to deliverable
+surfaces and to stop embedding the literal value in the task file.
+
+**Threshold staleness has a defined boundary.** At exactly `WARNING_GRACE_MS` after a threshold comes
+due, the `<=` comparison classifies it as fresh, so it fires. This is pinned by a dedicated boundary
+test rather than left to prose, and the restart scenario is asserted just past the boundary.
+
+**Deferred Self Validation steps.** Steps 1, 3, 4, 6, 7 and 8 were executed and passed. Steps 2
+(transport reachability from the Pi) and 5 (visual duration check on the Bravia) require the Pi and
+physical observation of the TV and were not executable from the development machine; they remain as
+deployment-time acceptance. Note that the TvOverlay half of step 2 was already demonstrated by the
+user from the Pi during planning.
+
+### Necessary follow-ups
+
+1. **Deploy and run the deferred validation** — on the Pi: `pnpm install && pnpm run build`, restart
+   `screen-time-worker`, confirm the startup line names the active transports, then work through Self
+   Validation steps 2 and 5 (including watching an actual 15 s and 60 s overlay on the Bravia).
+2. **Generate the ntfy topic and subscribe the devices** — the feature is inert until
+   `NTFY_TOPIC_URL` and `TVOVERLAY_URL` exist in the Pi's `apps/worker/.env`.
+3. **Notification sends are sequential within the per-profile loop.** With one profile this is
+   irrelevant. If a second profile is ever added, profile 1's sends (up to 3 s per transport) would
+   delay profile 2's reconcile. Worth revisiting only at that point — not worth pre-solving now.
+4. **`git push` will publish the rewritten history.** `main` and the feature branch were both
+   rewritten locally; nothing has been pushed. Push normally — no force is needed, since
+   `origin/main` is an ancestor of the rewritten `main`.
+5. **Consider whether the 30-minute warning earns its place** after living with it. The threshold
+   list is a single exported constant, so trimming it is a one-line change plus a test update.
