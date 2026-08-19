@@ -18,13 +18,17 @@ apps/
   web/            SvelteKit PWA (status + override buttons at /, weekly editor at /schedule).
                   Reads/writes SQLite only. Never calls UniFi.
   worker/         Reconcile loop (src/index.ts): every tick, read DB -> computeDesiredState ->
-                  GET/PUT the UniFi policy's `enabled` flag only when it differs.
+                  GET/PUT the UniFi policy's `enabled` flag only when it differs. Then, per
+                  profile and in its own try/catch, the pre-cutoff warning ladder (outbound
+                  POSTs to TvOverlay / ntfy.sh), which may never delay or break the reconcile.
                   screen-time-worker.service is the systemd unit.
 packages/
   shared/         @screen-time/shared: TypeORM entities + data source (src/db/), the pure
-                  desired-state logic (src/desired-state.ts, src/next-transition.ts), and the
-                  UniFi Integration API client (src/unifi/). scripts/ holds standalone proof
-                  scripts (toggle-proof.ts, db-smoke.ts, writable-policy-check.ts).
+                  desired-state logic (src/desired-state.ts, src/next-transition.ts), the pure
+                  warning-threshold logic (src/warnings.ts), the UniFi Integration API client
+                  (src/unifi/), and the outbound notification clients (src/notify/: TvOverlay
+                  and ntfy). scripts/ holds standalone proof scripts (toggle-proof.ts,
+                  db-smoke.ts, writable-policy-check.ts).
 infra/
   cloudflare/     OpenTofu config for the Cloudflare Tunnel + Access setup that publishes the
                   web app (tunnel + ingress, proxied DNS record, Google IdP, Access app and
@@ -37,13 +41,21 @@ docs/
 
 - **The worker is the sole UniFi caller.** All UniFi traffic goes through
   `packages/shared/src/unifi/` and is invoked only by `apps/worker`. The web app never talks to
-  UniFi.
+  UniFi. Sole UniFi caller ≠ sole HTTP caller: the worker also makes fire-and-forget outbound
+  POSTs to TvOverlay (LAN) and ntfy.sh through `packages/shared/src/notify/`, after the reconcile
+  and inside its own try/catch. Those sends may never gate, delay, or fail a policy write.
 - **No app↔worker poke channel.** Enforcement latency is one worker tick — default 5 seconds,
   configurable via `apps/worker/.env` — so changes feel nearly instant. The no-poke-channel rule
   stands; the frequent tick is the whole mechanism.
 - **SQLite is the only shared state.** The web app and worker communicate exclusively through the
   shared database file (WAL mode); there is no IPC, HTTP, queue, or file signal between them.
-- **No push notifications.** The PWA is installable but deliberately excludes push.
+- **No web push in the PWA.** Narrowed deliberately in plan 02, not lifted. The PWA is
+  installable and still ships no web push: no push subscription, no service-worker push handler,
+  no notification code path anywhere in `apps/web`. What changed is only the direction of travel —
+  the **worker** MAY send outbound notifications to endpoints configured in `apps/worker/.env`
+  (TvOverlay on the LAN, ntfy.sh), both optional and disabled when unset. That is a one-way send
+  from the process that already owns the tick, not a push pipeline in the app. Nothing here
+  creates an app↔worker channel, and no notification is ever routed through the web app.
 - **Authentication is enforced at the Cloudflare edge only.** Cloudflare Access challenges every
   request before it reaches the tunnel; the app itself has no auth, no sessions, and no
   `hooks.server.ts`, and must not grow any. The web app therefore listens on `127.0.0.1` (see
@@ -52,7 +64,7 @@ docs/
 
 ## Do not add (explicitly declined during planning)
 
-Do not add: push notifications, an app→worker notification channel, UniFi calls from the web app,
+Do not add: web push in the PWA, an app→worker notification channel, UniFi calls from the web app,
 in-UniFi scheduling, policy creation/discovery logic, or a connection-OK check (explicitly
 declined).
 
@@ -103,6 +115,13 @@ that path. Key facts already baked into the client:
 - **Desired-state logic lives ONLY in `packages/shared/src/desired-state.ts`**
   (`computeDesiredState`). It is the single authority for schedule/override precedence; the worker
   and the web UI must call it, never re-implement any rule. Unit tests sit beside it.
+- **Warning-threshold logic lives ONLY in `packages/shared/src/warnings.ts`**
+  (`computeDueWarnings`, `WARNING_THRESHOLDS_MINUTES`, `WARNING_GRACE_MS`). It is pure and takes
+  the cutoff as an input: the worker supplies it from `computeNextTransition`, and the module must
+  never re-derive a cutoff from windows or overrides — that would create a second authority. A
+  stale threshold (came due more than `WARNING_GRACE_MS` ago) and any non-smallest due threshold
+  are recorded as handled but not sent, so a restart cannot replay a burst. A `warning_log` row
+  means "handled", not "delivered", and is written _before_ the send: at-most-once, deliberately.
 - Schedule windows are recurring weekly ALLOWED windows, `dayOfWeek` 0 = Sunday … 6 = Saturday,
   covering **`[startMinute, endMinute)`** — start inclusive, end exclusive — in the household's
   IANA `TIMEZONE`. Inside any window ⇒ ON; outside all ⇒ OFF. Midnight-spanning windows are stored

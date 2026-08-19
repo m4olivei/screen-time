@@ -16,9 +16,11 @@ Three pieces in one pnpm workspace, sharing a single SQLite file as the only sha
 - **`apps/worker`** — a long-running Node reconcile loop (systemd-managed on the Pi). Every tick
   (default 5 s) it reads the database, computes each profile's desired state (ON/OFF) via the shared
   logic, and GETs/PUTs the UniFi firewall policy's `enabled` flag when it differs. It is the sole
-  process that calls UniFi.
+  process that calls UniFi. The same tick also sends the pre-cutoff warnings (below), strictly
+  after — and never in the way of — the reconcile.
 - **`packages/shared`** — TypeORM entities + SQLite data source, the pure
-  `computeDesiredState` schedule/override logic, and the UniFi Integration API client.
+  `computeDesiredState` schedule/override logic, the pure warning-threshold logic, the UniFi
+  Integration API client, and the two outbound notification clients (ntfy, TvOverlay).
 
 There is no channel between the web app and the worker: the web app writes to SQLite, and the
 worker's frequent tick picks the change up within seconds. That is the whole mechanism, by design.
@@ -84,14 +86,16 @@ cp apps/web/.env.example apps/web/.env
 
 `apps/worker/.env`:
 
-| Variable            | Meaning                                                                           |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `UNIFI_GATEWAY_URL` | Base UniFi gateway URL, no trailing slash, e.g. `https://192.168.1.1`             |
-| `UNIFI_API_KEY`     | API key generated in the UniFi console                                            |
-| `UNIFI_SITE_ID`     | Site ID from the Integration API (`GET /v1/sites`)                                |
-| `DB_PATH`           | Absolute path to the shared SQLite file (must match the web app's `DB_PATH`)      |
-| `TIMEZONE`          | Household IANA timezone used to evaluate schedule windows, e.g. `America/Toronto` |
-| `TICK_INTERVAL_MS`  | Milliseconds between reconcile ticks (default `5000` when unset)                  |
+| Variable            | Meaning                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| `UNIFI_GATEWAY_URL` | Base UniFi gateway URL, no trailing slash, e.g. `https://192.168.1.1`                      |
+| `UNIFI_API_KEY`     | API key generated in the UniFi console                                                     |
+| `UNIFI_SITE_ID`     | Site ID from the Integration API (`GET /v1/sites`)                                         |
+| `DB_PATH`           | Absolute path to the shared SQLite file (must match the web app's `DB_PATH`)               |
+| `TIMEZONE`          | Household IANA timezone used to evaluate schedule windows, e.g. `America/Toronto`          |
+| `TICK_INTERVAL_MS`  | Milliseconds between reconcile ticks (default `5000` when unset)                           |
+| `NTFY_TOPIC_URL`    | _Optional._ Full ntfy topic URL for pre-cutoff warnings (see below); unset ⇒ ntfy disabled |
+| `TVOVERLAY_URL`     | _Optional._ TvOverlay base URL on the TV, host and port only; unset ⇒ TvOverlay disabled   |
 
 Note there is **no policy-ID variable** in the worker's env: the firewall policy ID lives in the
 database on the profile row (`Profile.unifiRuleId`).
@@ -469,4 +473,166 @@ leaves the installed app's scope for `accounts.google.com`, and home-screen web 
 cookies with Safari. That is why the Access session is provisioned at 30 days; it is also the one
 thing worth testing on the actual iPhone before calling the rollout done.
 
-It launches fullscreen like a native app. There are no push notifications — deliberately.
+It launches fullscreen like a native app. The app itself sends **no push notifications** — that
+is deliberate and unchanged. Pre-cutoff warnings are delivered by the worker over separate
+channels instead; see the next section.
+
+## Pre-cutoff warning notifications (optional)
+
+Instead of the internet simply stopping mid-game, the worker counts the cutoff down: a notification
+at **30, 15, 10, 5, 2 and 1 minutes** before any ON→OFF transition — the end of a schedule window,
+an expiring "+15 min", or an "Allow now" running out. The text is deliberately dull: title
+`Screen time`, body `Internet turns off in N minutes`. No names, no schedule detail, nothing
+identifying.
+
+Two transports cover the household's device mix, because no single one reaches all of it:
+
+| Transport     | Reaches                      | Configured by    |
+| ------------- | ---------------------------- | ---------------- |
+| **ntfy.sh**   | macOS, Windows, iOS, Android | `NTFY_TOPIC_URL` |
+| **TvOverlay** | the Sony BRAVIA (Google TV)  | `TVOVERLAY_URL`  |
+
+Both are **optional and independent**. Leave a variable unset and that transport is simply off; the
+worker enforces the schedule exactly as it does today. The TV needs TvOverlay because the ntfy
+Android app cannot be installed on Google TV at all (it declares no leanback support).
+
+> **Warnings are advisory, not a control surface.** Enforcement lives entirely in the UniFi
+> firewall policy. If a device mutes the topic, denies notification permission, uninstalls the
+> client or is simply switched off, the internet still goes off at exactly the same instant. Nothing
+> a device does changes what the worker does — so there is no need to police the clients.
+
+### 1. Create an ntfy topic, and treat its name as a secret
+
+ntfy.sh needs no account and no API key for a public topic; publishing is a plain POST to
+`https://ntfy.sh/<topic>`. This feature sends roughly a dozen messages a day, three orders of
+magnitude below the free tier's limits.
+
+The catch is that **on ntfy.sh the topic name is the only access control, and it grants _publish_
+rights as well as subscribe.** Anyone who can guess or read the name can push their own
+"Internet turns off in 1 minute" to every kid's device — and read yours. So do not name it after
+the household domain (`screen-time.example.com` is exactly the kind of name that fails here).
+Generate one instead:
+
+```sh
+echo "screen-time-$(openssl rand -hex 8)"
+```
+
+Put the full URL in `apps/worker/.env`:
+
+```sh
+NTFY_TOPIC_URL=https://ntfy.sh/screen-time-0123456789abcdef   # your generated name
+```
+
+Treat that value like a password: it stays in the Pi's `.env` (git-ignored), only a placeholder is
+ever committed, and it does not belong in screenshots or chat. To rotate it, generate a new name,
+update `.env`, restart the worker, and re-subscribe every client.
+
+Self-hosting an ntfy server was considered and rejected: iOS instant delivery requires forwarding
+poll requests to ntfy.sh regardless, so self-hosting keeps the third-party dependency and adds a
+server, a certificate and a reachability requirement on top of it.
+
+### 2. Subscribe each device
+
+**On desktop, the installed PWA is the supported client.** ntfy ships no first-party desktop app;
+its own desktop route is the web app installed as a PWA, which gives a standalone window and real
+OS notifications. Third-party native clients exist but none is endorsed by the project.
+
+- **macOS (Sonoma 14+)** — open `https://ntfy.sh/app` in **Safari** → **Share** → **Add to Dock**.
+  Or in **Chrome**, use the **install icon** in the address bar.
+- **Windows** — open `https://ntfy.sh/app` in **Chrome** or **Edge** → the **install icon** in the
+  address bar. This creates a Start menu shortcut.
+- **iOS** — open `https://ntfy.sh/app` in **Safari** → **Share** → **Add to Home Screen**. (ntfy's
+  first-party App Store app works too and receives in the background.)
+- **Android** — install the first-party **ntfy** app from the **Play Store**.
+
+Then in the client: **Subscribe to topic** → paste the topic name (just the name, not the full URL)
+→ allow notifications when the OS prompts. Test it from any machine:
+
+```sh
+curl -sS -d "validation" -H "Title: Screen time" "https://ntfy.sh/screen-time-0123456789abcdef"
+```
+
+> **A desktop only receives while its browser or the installed PWA is running.** The ntfy tab does
+> not need to be open — but if the browser is fully quit, nothing arrives, and nothing anywhere
+> reports a problem. A laptop in a full-screen game with no browser running is precisely the case
+> that misses warnings, and precisely the case where they matter most. iOS, Android and the TV
+> overlay have no such gap. If this bites in practice, the escalation is a tray-resident client or
+> an `ntfy subscribe` CLI as a login agent.
+
+### 3. Install TvOverlay on the Bravia
+
+TvOverlay draws over whatever is playing, which is the only thing that works on a TV mid-video.
+
+1. **Install TvOverlay** from the Play Store on the TV, and open it once to read the port it
+   listens on (5001).
+2. **Give the TV a DHCP reservation** in the UDM. `TVOVERLAY_URL` addresses the TV by IP, so a
+   lease that moves silently breaks every warning.
+3. **Grant "draw over other apps".** Many TVs do not expose that toggle in Settings at all, which
+   is why the ADB fallback below is the normal path rather than a workaround. Enable developer
+   options and network debugging on the TV, then from the Pi or a workstation:
+
+   ```sh
+   adb connect <tv-ip>:5555
+   adb shell appops set com.tabdeveloper.tvoverlay SYSTEM_ALERT_WINDOW allow
+   ```
+
+4. **Exempt it from battery optimization**, or Android eventually kills it — POSTs keep returning
+   success while nothing renders on screen:
+
+   ```sh
+   adb shell dumpsys deviceidle whitelist +com.tabdeveloper.tvoverlay
+   ```
+
+5. **Set the base URL** in `apps/worker/.env` — host and port only, no path and no trailing slash
+   (the client appends `/notify` itself):
+
+   ```sh
+   TVOVERLAY_URL=http://192.168.1.50:5001    # the TV's reserved address
+   ```
+
+6. **Verify from the Pi**, not from a workstation — the Pi is what has to reach the TV across
+   VLANs:
+
+   ```sh
+   curl -sS -X POST "http://192.168.1.50:5001/notify" \
+     -H 'Content-Type: application/json' \
+     -d '{"title":"Screen time","message":"validation","duration":5}'
+   ```
+
+   Expect `{"success":true,...}` **and** a visible overlay on the TV. HTTP success alone proves
+   only that the app is listening, not that it is allowed to draw.
+
+On the TV each warning is shown for 15 seconds, except the 1-minute warning which stays up for 60
+so it is still on screen when the internet drops. ntfy has no auto-dismiss concept, so its
+notifications persist until dismissed or aged out by the receiving OS.
+
+### 4. Enable and check
+
+Restart the worker after editing `.env`, then read the startup line:
+
+```sh
+sudo systemctl restart screen-time-worker
+journalctl -u screen-time-worker -f
+```
+
+```
+notifications: tvoverlay=active ntfy=active
+```
+
+`inactive` means that variable is unset or empty. Each send is logged too:
+
+```
+profile="Kids" warnings cutoff=2026-08-18T21:00:00.000Z handled=[5] send=5
+profile="Kids" notify transport=ntfy threshold=5 result=ok message="Internet turns off in 5 minutes"
+```
+
+Two behaviours worth knowing before you debug them:
+
+- **A warning fires at most once per cutoff, and stale ones are never replayed.** If the worker is
+  restarted with 4 minutes left, the 30/15/10/5 rungs are recorded as handled without being sent —
+  only warnings that came due within the last minute are delivered. An override that moves the
+  cutoff (a `+15 min`) re-arms the whole ladder against the new time.
+- **Delivery never blocks enforcement.** Sends run after the reconcile, in their own `try`/`catch`,
+  with a 3-second per-request timeout and no retries. A powered-off TV or an ntfy.sh outage shows up
+  as `result=failed` in the log while the `desired=… policyEnabled=… action=…` line keeps appearing
+  every tick.

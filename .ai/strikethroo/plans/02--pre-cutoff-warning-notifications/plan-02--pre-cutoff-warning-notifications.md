@@ -10,6 +10,8 @@ created: 2026-08-18
 
 > lets plan out the push notification feature. When we are inside an active screen time window, as the time runs down, lets show a simple notification (not fixed) at the 30min left, 15min left, 10min left, 5min left, 2min left, and 1min left. Each time the notification should be visible for 15seconds. The last 1min left should be visible for the full minute. Use TVOverlay as discussed to push notifications to the Sony TV. Use ntfy to push to mac, windows, ios and andriod clients. On the ntfy side, lets work through the best way to setup and host it. I don't want to pay for ntfy, and it would be find to use a public topic with a unique name like `screen-time.example.com` if possible. I'd be open to hosting an ntfy server on the pi if that is an option and would be valuable.
 
+The work order above is verbatim apart from the household domain, replaced throughout this document with `example.com` per the project's no-personal-values-in-the-repo rule. The topic name the user proposed was derived from their real domain; the substance of the clarification below is unchanged.
+
 Preceding investigation in the same conversation established the delivery mechanism. The ntfy Android app is not installable from the Play Store on Google TV (it declares no leanback support), which is why the Sony BRAVIA uses TvOverlay instead. TvOverlay's REST API was verified working from the Raspberry Pi against the Bravia on port 5001: both `POST /notify_fixed` (set and clear) returned `{"success":true,"message":"Fixed notification received"}`. The Bravia holds a fixed DHCP-reserved address in the UDM.
 
 ## Plan Clarifications
@@ -238,9 +240,9 @@ These three are genuinely independent: the transports take primitive parameters 
 **Parallel Tasks:**
 - ✔️ Task 004: Wire warnings into the worker tick (depends on: 001, 002, 003) — optional transport configuration, evaluation after the UniFi reconcile, record-before-send, and the `try`/`catch` that keeps notification failures away from enforcement
 
-### Phase 3: Documentation
+### ✅ Phase 3: Documentation
 **Parallel Tasks:**
-- Task 005: Documentation and the AGENTS.md invariant amendment (depends on: 004) — narrows the no-push-notifications invariant rather than deleting it, documents the PWA-preferred desktop install path and the browser-must-be-running caveat, and adds placeholder-only env entries
+- ✔️ Task 005: Documentation and the AGENTS.md invariant amendment (depends on: 004) — narrows the no-push-notifications invariant rather than deleting it, documents the PWA-preferred desktop install path and the browser-must-be-running caveat, and adds placeholder-only env entries
 
 ### Post-phase Actions
 

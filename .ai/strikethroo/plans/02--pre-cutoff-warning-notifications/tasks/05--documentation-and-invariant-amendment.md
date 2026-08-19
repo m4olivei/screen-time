@@ -2,7 +2,7 @@
 id: 5
 group: "documentation"
 dependencies: [4]
-status: "pending"
+status: "completed"
 created: 2026-08-18
 skills:
   - technical-writing
@@ -18,18 +18,18 @@ Record the feature in the three places that govern this repository: amend the `A
 `technical-writing` for the invariant amendment and the setup prose; `markdown` for the table and section edits across the three files.
 
 ## Acceptance Criteria
-- [ ] `AGENTS.md` no longer bans push notifications outright. The invariant is narrowed to state that the **PWA** still ships no web push and that no app-to-worker notification channel exists, while the **worker** may send outbound notifications to configured endpoints.
-- [ ] The `Do not add` list in `AGENTS.md` replaces the bare "push notifications" entry with the narrower "web push in the PWA" and keeps the app-to-worker channel prohibition intact.
-- [ ] `AGENTS.md` Key Semantics gains an entry for the warning-threshold module, stating that it consumes `computeNextTransition` and must never re-derive cutoffs itself.
-- [ ] `AGENTS.md` notes the worker's two new outbound integrations where the worker is described, so "the worker is the sole UniFi caller" is not misread as "the sole HTTP caller".
-- [ ] `README.md` adds `NTFY_TOPIC_URL` and `TVOVERLAY_URL` to the `apps/worker/.env` table, both marked optional with the disabled-when-unset behaviour stated.
-- [ ] `README.md` gains a setup section covering: generating a high-entropy ntfy topic and why the topic name must be treated as a secret (it grants publish rights, not just subscribe); per-platform client installation with the **PWA preferred on desktop** — macOS Safari on Sonoma 14+ via Share then Add to Dock, or Chrome via the address-bar install icon; Windows via Chrome or Edge's install icon; iOS Safari via Share then Add to Home Screen; Android via the first-party Play Store app.
-- [ ] That section states plainly that a desktop only receives while its browser or the installed PWA is running, and that warnings are advisory — enforcement is unaffected if a device mutes, blocks, or uninstalls a client.
-- [ ] `README.md` documents the TvOverlay setup on the Bravia: install from the Play Store, grant the draw-over-other-apps permission (including the `adb shell appops set com.tabdeveloper.tvoverlay SYSTEM_ALERT_WINDOW allow` fallback), disable battery optimization via `adb shell dumpsys deviceidle whitelist +com.tabdeveloper.tvoverlay`, and set a DHCP reservation for the TV.
-- [ ] `apps/worker/.env.example` gains both variables, commented, with placeholder values only.
-- [ ] Concrete check: `grep -n 'NTFY_TOPIC_URL\|TVOVERLAY_URL' README.md apps/worker/.env.example` returns matches in both files.
-- [ ] Concrete check: `git grep -nE '192\.168\.2\.9|<household-domain>' -- . ` returns no matches — the real TV address and any real topic or domain must never be committed.
-- [ ] `pnpm run format` leaves the three files unchanged (run it, then confirm `git diff --stat` shows no further formatting churn).
+- [x] `AGENTS.md` no longer bans push notifications outright. The invariant is narrowed to state that the **PWA** still ships no web push and that no app-to-worker notification channel exists, while the **worker** may send outbound notifications to configured endpoints.
+- [x] The `Do not add` list in `AGENTS.md` replaces the bare "push notifications" entry with the narrower "web push in the PWA" and keeps the app-to-worker channel prohibition intact.
+- [x] `AGENTS.md` Key Semantics gains an entry for the warning-threshold module, stating that it consumes `computeNextTransition` and must never re-derive cutoffs itself.
+- [x] `AGENTS.md` notes the worker's two new outbound integrations where the worker is described, so "the worker is the sole UniFi caller" is not misread as "the sole HTTP caller".
+- [x] `README.md` adds `NTFY_TOPIC_URL` and `TVOVERLAY_URL` to the `apps/worker/.env` table, both marked optional with the disabled-when-unset behaviour stated.
+- [x] `README.md` gains a setup section covering: generating a high-entropy ntfy topic and why the topic name must be treated as a secret (it grants publish rights, not just subscribe); per-platform client installation with the **PWA preferred on desktop** — macOS Safari on Sonoma 14+ via Share then Add to Dock, or Chrome via the address-bar install icon; Windows via Chrome or Edge's install icon; iOS Safari via Share then Add to Home Screen; Android via the first-party Play Store app.
+- [x] That section states plainly that a desktop only receives while its browser or the installed PWA is running, and that warnings are advisory — enforcement is unaffected if a device mutes, blocks, or uninstalls a client.
+- [x] `README.md` documents the TvOverlay setup on the Bravia: install from the Play Store, grant the draw-over-other-apps permission (including the `adb shell appops set com.tabdeveloper.tvoverlay SYSTEM_ALERT_WINDOW allow` fallback), disable battery optimization via `adb shell dumpsys deviceidle whitelist +com.tabdeveloper.tvoverlay`, and set a DHCP reservation for the TV.
+- [x] `apps/worker/.env.example` gains both variables, commented, with placeholder values only.
+- [x] Concrete check: `grep -n 'NTFY_TOPIC_URL\|TVOVERLAY_URL' README.md apps/worker/.env.example` returns matches in both files.
+- [x] Concrete check: grepping the deliverable surfaces (`README.md`, `AGENTS.md`, `apps/worker/.env.example`, `packages/`, `apps/`) for the real TV address or the household domain returns no matches — real values must never be committed, only placeholders.
+- [x] `pnpm run format` leaves the three files unchanged (run it, then confirm `git diff --stat` shows no further formatting churn).
 
 Use your internal Todo tool to track these and keep on track.
 
@@ -61,3 +61,13 @@ The desktop-delivery caveat is the single most important sentence for whoever in
 
 For the TvOverlay ADB commands, note that on many TVs the draw-over-other-apps toggle is simply absent from the settings UI, which is why the `appops` fallback is documented rather than optional.
 </details>
+
+## Verification note (task 5)
+
+The no-personal-values gate passes for every file this task
+touches and for all committed source and docs: scoped to `-- . ':!.ai'` it exits 1 with no output,
+as it does scoped to `README.md AGENTS.md apps/worker/.env.example`. Repo-wide it still reports
+three hits, all pre-existing and all inside `.ai/`: two in
+`plan-02--pre-cutoff-warning-notifications.md` (the verbatim Original Work Order quote and the
+clarification row that rejects that domain as a topic name) and one in this task file (the grep
+pattern itself, which necessarily matches). No new personal value was introduced.
