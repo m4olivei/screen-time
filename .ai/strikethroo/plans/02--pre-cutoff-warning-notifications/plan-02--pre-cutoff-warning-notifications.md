@@ -226,11 +226,11 @@ graph TD
     004 --> 005["Task 005: Documentation + AGENTS.md amendment"]
 ```
 
-### Phase 1: Shared Package Foundations
+### ✅ Phase 1: Shared Package Foundations
 **Parallel Tasks:**
-- Task 001: Warning threshold logic and message formatting — the pure authority for warning timing, with unit tests for staleness suppression and the one-per-tick rule
-- Task 002: Warning state entity and query helpers — the `warning_log` table, its unique constraint, and the read/record/prune helpers
-- Task 003: TvOverlay and ntfy notification transports — two HTTP clients behind one `Notifier` interface, resolve-never-throw with a 3s timeout
+- ✔️ Task 001: Warning threshold logic and message formatting — the pure authority for warning timing, with unit tests for staleness suppression and the one-per-tick rule
+- ✔️ Task 002: Warning state entity and query helpers — the `warning_log` table, its unique constraint, and the read/record/prune helpers
+- ✔️ Task 003: TvOverlay and ntfy notification transports — two HTTP clients behind one `Notifier` interface, resolve-never-throw with a 3s timeout
 
 These three are genuinely independent: the transports take primitive parameters rather than the threshold module's types, deliberately so this phase stays wide.
 

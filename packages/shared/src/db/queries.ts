@@ -2,6 +2,7 @@ import { DataSource, LessThanOrEqual, MoreThan } from 'typeorm';
 import { Override, OverrideType } from './entities/Override.js';
 import { Profile } from './entities/Profile.js';
 import { ScheduleWindow } from './entities/ScheduleWindow.js';
+import { WarningLog } from './entities/WarningLog.js';
 
 /**
  * The single shared definition of an "active" override: one whose
@@ -97,5 +98,61 @@ export async function pruneExpiredOverrides(
 	const result = await dataSource
 		.getRepository(Override)
 		.delete({ effectiveUntil: LessThanOrEqual(now) });
+	return result.affected ?? 0;
+}
+
+// --- Warning log ---
+
+/**
+ * The thresholds already handled for a profile's warning ladder at `cutoffAt`.
+ * Returns plain minute values so the result feeds straight into
+ * `computeDueWarnings`.
+ */
+export async function getHandledThresholds(
+	dataSource: DataSource,
+	profileId: number,
+	cutoffAt: Date
+): Promise<number[]> {
+	const rows = await dataSource.getRepository(WarningLog).find({
+		where: { profileId, cutoffAt },
+		order: { thresholdMinutes: 'DESC' }
+	});
+	return rows.map((row) => row.thresholdMinutes);
+}
+
+/**
+ * Mark thresholds as handled for a ladder. Takes an array because one tick can
+ * hand back several at once (one sent, the rest suppressed as stale).
+ *
+ * Duplicates are a no-op rather than an error: a crash between recording and
+ * the next tick must never wedge the worker on the unique constraint.
+ */
+export async function recordHandledThresholds(
+	dataSource: DataSource,
+	profileId: number,
+	cutoffAt: Date,
+	thresholdMinutes: number[]
+): Promise<void> {
+	if (thresholdMinutes.length === 0) return;
+	await dataSource
+		.createQueryBuilder()
+		.insert()
+		.into(WarningLog)
+		.values(thresholdMinutes.map((minutes) => ({ profileId, cutoffAt, thresholdMinutes: minutes })))
+		.orIgnore()
+		.execute();
+}
+
+/**
+ * Delete warning rows whose cutoff has passed — once a cutoff is behind us its
+ * ladder can never fire again. Returns the number removed.
+ */
+export async function pruneWarningLog(
+	dataSource: DataSource,
+	now: Date = new Date()
+): Promise<number> {
+	const result = await dataSource
+		.getRepository(WarningLog)
+		.delete({ cutoffAt: LessThanOrEqual(now) });
 	return result.affected ?? 0;
 }

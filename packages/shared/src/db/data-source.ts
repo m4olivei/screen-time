@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { Override } from './entities/Override.js';
 import { Profile } from './entities/Profile.js';
 import { ScheduleWindow } from './entities/ScheduleWindow.js';
+import { WarningLog } from './entities/WarningLog.js';
 
 /**
  * Create and initialize the shared SQLite data source.
@@ -19,7 +20,7 @@ export async function createDataSource(dbPath: string): Promise<DataSource> {
 	const dataSource = new DataSource({
 		type: 'better-sqlite3',
 		database: dbPath,
-		entities: [Profile, ScheduleWindow, Override],
+		entities: [Profile, ScheduleWindow, Override, WarningLog],
 		synchronize: true
 	});
 	await dataSource.initialize();

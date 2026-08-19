@@ -11,6 +11,7 @@ export const SHARED_PACKAGE_NAME = '@screen-time/shared';
 
 export * from './db/index.js';
 export * from './unifi/index.js';
+export * from './notify/index.js';
 export {
 	computeDesiredState,
 	type ComputeDesiredStateInput,
@@ -21,3 +22,12 @@ export {
 	computeNextTransition,
 	NEXT_TRANSITION_HORIZON_DAYS
 } from './next-transition.js';
+export {
+	computeDueWarnings,
+	describeWarning,
+	WARNING_GRACE_MS,
+	WARNING_THRESHOLDS_MINUTES,
+	type ComputeDueWarningsInput,
+	type DueWarnings,
+	type WarningDescription
+} from './warnings.js';
