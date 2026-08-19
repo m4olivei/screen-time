@@ -234,9 +234,9 @@ graph TD
 
 These three are genuinely independent: the transports take primitive parameters rather than the threshold module's types, deliberately so this phase stays wide.
 
-### Phase 2: Worker Integration
+### ✅ Phase 2: Worker Integration
 **Parallel Tasks:**
-- Task 004: Wire warnings into the worker tick (depends on: 001, 002, 003) — optional transport configuration, evaluation after the UniFi reconcile, record-before-send, and the `try`/`catch` that keeps notification failures away from enforcement
+- ✔️ Task 004: Wire warnings into the worker tick (depends on: 001, 002, 003) — optional transport configuration, evaluation after the UniFi reconcile, record-before-send, and the `try`/`catch` that keeps notification failures away from enforcement
 
 ### Phase 3: Documentation
 **Parallel Tasks:**

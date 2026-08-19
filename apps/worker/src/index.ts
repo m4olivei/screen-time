@@ -9,6 +9,10 @@
  * when the actual `enabled` flag differs from desired — no write on no-op
  * ticks, no edge-tracking state between ticks.
  *
+ * The same tick also evaluates the pre-cutoff warning ladder for each profile
+ * after its reconcile, in a separately guarded block: notification delivery is
+ * a courtesy that must never delay or break enforcement.
+ *
  * Deliberately absent (per plan): cron/schedulers, health endpoints, metrics,
  * and any IPC/poke channel with the web app. A plain sleep loop is the whole
  * runtime; systemd (`screen-time-worker.service`) handles restarts.
@@ -17,13 +21,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
 	computeDesiredState,
+	computeDueWarnings,
+	computeNextTransition,
 	createDataSource,
+	createNtfyNotifier,
+	createTvOverlayNotifier,
 	createUnifiClient,
+	describeWarning,
 	getActiveOverrides,
 	getAllProfiles,
+	getHandledThresholds,
 	getScheduleWindows,
 	pruneExpiredOverrides,
+	pruneWarningLog,
+	recordHandledThresholds,
+	WARNING_GRACE_MS,
 	type DesiredState,
+	type Notifier,
 	type UnifiClient
 } from '@screen-time/shared';
 
@@ -57,7 +71,12 @@ const config = {
 	siteId: requireEnv('UNIFI_SITE_ID'),
 	dbPath: requireEnv('DB_PATH'),
 	timeZone: requireEnv('TIMEZONE'),
-	tickIntervalMs: Number(process.env.TICK_INTERVAL_MS ?? '') || 5000
+	tickIntervalMs: Number(process.env.TICK_INTERVAL_MS ?? '') || 5000,
+	// Notification transports are OPTIONAL: unset (or empty) simply disables
+	// that transport, so the worker deploys and enforces before anyone has
+	// touched .env. Never promote these to requireEnv.
+	tvOverlayUrl: process.env.TVOVERLAY_URL || undefined,
+	ntfyTopicUrl: process.env.NTFY_TOPIC_URL || undefined
 };
 
 // --- Helpers ----------------------------------------------------------------
@@ -68,6 +87,28 @@ function log(message: string): void {
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A configured notification transport, named for log lines. */
+interface NamedNotifier {
+	name: string;
+	notifier: Notifier;
+}
+
+/**
+ * Build the transport list once, from the optional environment variables. An
+ * unset variable yields no transport; an empty list means warnings are still
+ * evaluated and recorded, just never delivered.
+ */
+function createNotifiers(): NamedNotifier[] {
+	const notifiers: NamedNotifier[] = [];
+	if (config.tvOverlayUrl) {
+		notifiers.push({ name: 'tvoverlay', notifier: createTvOverlayNotifier(config.tvOverlayUrl) });
+	}
+	if (config.ntfyTopicUrl) {
+		notifiers.push({ name: 'ntfy', notifier: createNtfyNotifier(config.ntfyTopicUrl) });
+	}
+	return notifiers;
 }
 
 /**
@@ -81,13 +122,21 @@ function desiredPolicyEnabled(desired: DesiredState): boolean {
 
 // --- Reconcile tick ---------------------------------------------------------
 
-async function tick(dataSource: DataSource, unifi: UnifiClient): Promise<void> {
+async function tick(
+	dataSource: DataSource,
+	unifi: UnifiClient,
+	notifiers: NamedNotifier[]
+): Promise<void> {
 	const now = new Date();
 
 	// Opportunistic cleanup — expired overrides never affect computeDesiredState,
 	// pruning just keeps the table small.
 	const pruned = await pruneExpiredOverrides(dataSource, now);
 	if (pruned > 0) log(`pruned ${pruned} expired override(s)`);
+
+	// Same idea for the warning ladder: a cutoff that has passed can never fire.
+	const prunedWarnings = await pruneWarningLog(dataSource, now);
+	if (prunedWarnings > 0) log(`pruned ${prunedWarnings} expired warning row(s)`);
 
 	const profiles = await getAllProfiles(dataSource);
 	for (const profile of profiles) {
@@ -105,6 +154,55 @@ async function tick(dataSource: DataSource, unifi: UnifiClient): Promise<void> {
 			await unifi.setFirewallPolicyEnabled(config.siteId, profile.unifiRuleId, wantEnabled);
 			log(`profile="${profile.name}" PUT policy "${policy.name}" enabled=${wantEnabled}`);
 		}
+
+		// Pre-cutoff warnings. Deliberately AFTER the reconcile above and inside
+		// its own try/catch: enforcement is the job, notification is a courtesy,
+		// and a hung TV or a dead ntfy topic must never delay or break a policy
+		// write. Anything that throws here is logged and swallowed.
+		try {
+			if (desired !== 'ON') continue;
+
+			// Reuse the very inputs the reconcile just decided on — the cutoff can
+			// never disagree with the desired state it was derived from.
+			const cutoff = computeNextTransition({
+				now,
+				timeZone: config.timeZone,
+				windows,
+				overrides
+			});
+			if (cutoff === null) continue;
+
+			const handled = await getHandledThresholds(dataSource, profile.id, cutoff);
+			const { send, handle } = computeDueWarnings({
+				now,
+				cutoff,
+				handledThresholds: handled,
+				graceMs: WARNING_GRACE_MS
+			});
+			if (handle.length === 0) continue;
+
+			// Record BEFORE sending, always. If the process dies mid-send the
+			// warning is lost rather than repeated: a duplicate "5 minutes left"
+			// confuses a kid more than a missing one.
+			await recordHandledThresholds(dataSource, profile.id, cutoff, handle);
+			log(
+				`profile="${profile.name}" warnings cutoff=${cutoff.toISOString()} ` +
+					`handled=[${handle.join(',')}] send=${send ?? 'none'}`
+			);
+
+			if (send === null) continue;
+			const description = describeWarning(send);
+			const notice = { ...description, thresholdMinutes: send };
+			for (const { name, notifier } of notifiers) {
+				const ok = await notifier.send(notice);
+				log(
+					`profile="${profile.name}" notify transport=${name} threshold=${send} ` +
+						`result=${ok ? 'ok' : 'failed'} message="${notice.message}"`
+				);
+			}
+		} catch (error) {
+			log(`profile="${profile.name}" warning step failed: ${error}`);
+		}
 	}
 }
 
@@ -115,6 +213,14 @@ async function main(): Promise<void> {
 
 	const dataSource = await createDataSource(config.dbPath);
 	const unifi = createUnifiClient({ gatewayUrl: config.gatewayUrl, apiKey: config.apiKey });
+
+	// Built once, not per tick. Logged at startup so a typo'd URL — or a
+	// variable that never made it into .env — is visible in journalctl.
+	const notifiers = createNotifiers();
+	log(
+		`notifications: tvoverlay=${config.tvOverlayUrl ? 'active' : 'inactive'} ` +
+			`ntfy=${config.ntfyTopicUrl ? 'active' : 'inactive'}`
+	);
 
 	// Log the name of each policy we control so a wrong configured ID is
 	// immediately visible in the startup output.
@@ -134,7 +240,7 @@ async function main(): Promise<void> {
 	// logged and the next tick retries from absolute desired state.
 	while (true) {
 		try {
-			await tick(dataSource, unifi);
+			await tick(dataSource, unifi, notifiers);
 		} catch (error) {
 			log(`tick failed: ${error}`);
 		}
