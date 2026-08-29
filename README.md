@@ -398,13 +398,13 @@ effects (these bypass Access and exercise only SvelteKit's cross-origin check):
 # Wrong origin must be rejected outright
 curl -si -X POST -H 'Origin: https://wrong.example' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data 'profileId=0' 'http://127.0.0.1:3000/?/extend15' | head -1
+  --data 'profileId=0' 'http://127.0.0.1:3000/?/extend' | head -1
 # => HTTP/1.1 403   Cross-site POST form submissions are forbidden
 
 # Correct origin passes the check; the action then runs and fails validation
 curl -si -X POST -H 'Origin: https://screen-time.example.com' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data 'profileId=0' 'http://127.0.0.1:3000/?/extend15' | head -1
+  --data 'profileId=0' 'http://127.0.0.1:3000/?/extend' | head -1
 # => HTTP/1.1 400   <- 400 rather than 403 is the pass condition
 ```
 

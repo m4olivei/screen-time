@@ -51,6 +51,22 @@
 		};
 	};
 
+	/**
+	 * The extend strip opens on this value rather than at the far left, so
+	 * +10/+15 are the pair in view on load. Starting mid-list also leaves a
+	 * button peeking on both sides, which shows the strip scrolls either way.
+	 */
+	const LEAD_MINUTES = 10;
+
+	/** Scroll an extend strip so LEAD_MINUTES is the leftmost fully visible button. */
+	function openAtLead(node: HTMLElement) {
+		const index = data.extendMinutes.indexOf(LEAD_MINUTES);
+		const items = node.children;
+		if (index < 1 || items.length <= index) return;
+		node.scrollLeft =
+			(items[index] as HTMLElement).offsetLeft - (items[0] as HTMLElement).offsetLeft;
+	}
+
 	/** "Kids" → "Kids'", "Ana" → "Ana's" — for the "Kids' internet" headline. */
 	function possessive(name: string): string {
 		return name.endsWith('s') ? `${name}'` : `${name}'s`;
@@ -85,39 +101,53 @@
 				<Card.Description>Changes take effect within seconds.</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				<form method="POST" use:enhance={submitOverride} class="grid grid-cols-2 gap-3">
+				<form method="POST" use:enhance={submitOverride} class="flex flex-col gap-3">
 					<input type="hidden" name="profileId" value={profile.id} />
-					<Button
-						type="submit"
-						formaction="?/extend15"
-						size="lg"
-						class="h-16 text-lg font-semibold"
+					<!--
+						Extend buttons: exactly two fit between the scroll padding, so the
+						neighbours on either side peek out of that padding to the card edge
+						and show which directions still have buttons. Negative margins let
+						the strip span the card's full width; the card clips it.
+					-->
+					<div
+						use:openAtLead
+						class="-mx-(--card-spacing) flex snap-x snap-mandatory scroll-px-(--card-spacing) [scrollbar-width:none] gap-3 overflow-x-auto overscroll-x-contain px-(--card-spacing) [&::-webkit-scrollbar]:hidden"
 					>
-						+15 min
-					</Button>
-					<Button type="submit" formaction="?/extend5" size="lg" class="h-16 text-lg font-semibold">
-						+5 min
-					</Button>
-					<Button
-						type="submit"
-						formaction="?/pauseNow"
-						variant="destructive"
-						size="lg"
-						class="h-16 flex-col gap-0 text-lg font-semibold"
-					>
-						Pause
-						<span class="text-xs font-normal opacity-80">{profile.horizonLabel}</span>
-					</Button>
-					<Button
-						type="submit"
-						formaction="?/allowNow"
-						variant="secondary"
-						size="lg"
-						class="h-16 flex-col gap-0 text-lg font-semibold"
-					>
-						Allow
-						<span class="text-xs font-normal opacity-80">{profile.horizonLabel}</span>
-					</Button>
+						{#each data.extendMinutes as minutes (minutes)}
+							<Button
+								type="submit"
+								formaction="?/extend"
+								name="minutes"
+								value={minutes}
+								size="lg"
+								class="h-16 w-[calc((100%-0.75rem)/2)] shrink-0 snap-start text-lg font-semibold"
+							>
+								+{minutes} min
+							</Button>
+						{/each}
+					</div>
+					<div class="grid grid-cols-2 gap-3">
+						<Button
+							type="submit"
+							formaction="?/pauseNow"
+							variant="destructive"
+							size="lg"
+							class="h-16 flex-col gap-0 text-lg font-semibold"
+						>
+							Pause
+							<span class="text-xs font-normal opacity-80">{profile.horizonLabel}</span>
+						</Button>
+						<Button
+							type="submit"
+							formaction="?/allowNow"
+							variant="secondary"
+							size="lg"
+							class="h-16 flex-col gap-0 text-lg font-semibold"
+						>
+							Allow
+							<span class="text-xs font-normal opacity-80">{profile.horizonLabel}</span>
+						</Button>
+					</div>
 				</form>
 			</Card.Content>
 		</Card.Root>

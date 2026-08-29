@@ -18,6 +18,13 @@ import type { Actions, PageServerLoad } from './$types.js';
 const FALLBACK_HORIZON_MS = 3 * 60 * 60 * 1000; // 3 hours
 const MINUTE_MS = 60 * 1000;
 
+/**
+ * The "+N min" buttons, ascending — rendered left to right by the page and the
+ * only extensions the `extend` action accepts. One authority: the page reads
+ * this list from `load`, so a button can never post a value the action rejects.
+ */
+const EXTEND_MINUTES = [5, 10, 15, 30];
+
 const timeFormatter = new Intl.DateTimeFormat('en-US', {
 	timeZone: TIMEZONE,
 	hour: 'numeric',
@@ -83,24 +90,27 @@ export const load: PageServerLoad = async () => {
 		});
 	}
 
-	return { profiles: profileStatuses, timeZone: TIMEZONE };
+	return { profiles: profileStatuses, timeZone: TIMEZONE, extendMinutes: EXTEND_MINUTES };
 };
 
-async function readProfileId(request: Request): Promise<number | null> {
-	const form = await request.formData();
+function readProfileId(form: FormData): number | null {
 	const profileId = Number(form.get('profileId'));
 	return Number.isInteger(profileId) && profileId > 0 ? profileId : null;
 }
 
 /**
- * +15/+5: create-or-extend. If an active `extend` override exists, push its
+ * +N min: create-or-extend. If an active `extend` override exists, push its
  * `effectiveUntil` N minutes further; otherwise create one anchored at the
  * current cutoff (shared `computeExtendAnchor`: next transition when ON, now
  * when OFF).
  */
-async function applyExtend(request: Request, minutes: number) {
-	const profileId = await readProfileId(request);
+async function applyExtend(request: Request) {
+	const form = await request.formData();
+	const profileId = readProfileId(form);
 	if (profileId === null) return fail(400, { message: 'Missing profile' });
+
+	const minutes = Number(form.get('minutes'));
+	if (!EXTEND_MINUTES.includes(minutes)) return fail(400, { message: 'Unsupported extension' });
 
 	const dataSource = await getDataSource();
 	const now = new Date();
@@ -127,7 +137,7 @@ async function applyExtend(request: Request, minutes: number) {
 
 /** Pause now / Allow now: force OFF/ON until the next schedule change (or 3h). */
 async function applyForce(request: Request, type: OverrideType) {
-	const profileId = await readProfileId(request);
+	const profileId = readProfileId(await request.formData());
 	if (profileId === null) return fail(400, { message: 'Missing profile' });
 
 	const dataSource = await getDataSource();
@@ -142,8 +152,7 @@ async function applyForce(request: Request, type: OverrideType) {
 }
 
 export const actions: Actions = {
-	extend15: ({ request }) => applyExtend(request, 15),
-	extend5: ({ request }) => applyExtend(request, 5),
+	extend: ({ request }) => applyExtend(request),
 	pauseNow: ({ request }) => applyForce(request, 'block_now'),
 	allowNow: ({ request }) => applyForce(request, 'allow_now')
 };
