@@ -29,6 +29,13 @@ export default defineConfig({
 			// the virtual:pwa-register module in production builds only.
 			registerType: 'autoUpdate',
 			injectRegister: false,
+			// The plugin only emits manifest.webmanifest during `build` unless dev
+			// support is switched on, while app.html links it unconditionally — so
+			// without this the dev server 404s the manifest on every page load and
+			// the install metadata can't be checked before deploying. Registration
+			// stays production-only (+layout.svelte gates it on !dev), so this makes
+			// the manifest fetchable without putting a service worker in front of dev.
+			devOptions: { enabled: true },
 			manifest: {
 				name: 'Screen Time',
 				short_name: 'Screen Time',
