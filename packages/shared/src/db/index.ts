@@ -13,6 +13,7 @@ export {
 	getActiveOverrides,
 	createOverride,
 	extendOverride,
+	deleteOverrides,
 	pruneExpiredOverrides,
 	getHandledThresholds,
 	recordHandledThresholds,

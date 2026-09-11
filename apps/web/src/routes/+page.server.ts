@@ -4,6 +4,7 @@ import {
 	computeExtendAnchor,
 	computeNextTransition,
 	createOverride,
+	deleteOverrides,
 	extendOverride,
 	getActiveOverrides,
 	getAllProfiles,
@@ -78,13 +79,21 @@ export const load: PageServerLoad = async () => {
 		const state = computeDesiredState(input);
 		const until = computeNextTransition(input);
 		const scheduleChange = computeNextTransition({ ...input, overrides: [] });
+		// The schedule is back in charge once the last active override lapses,
+		// whichever one currently wins.
+		const resumesAt =
+			overrides.length > 0
+				? new Date(Math.max(...overrides.map((override) => override.effectiveUntil.getTime())))
+				: null;
 
 		profileStatuses.push({
 			id: profile.id,
 			name: profile.name,
 			state,
+			onSchedule: overrides.length === 0,
 			until: until ? until.toISOString() : null,
 			untilLabel: until ? formatInstant(until, now) : null,
+			resumeLabel: resumesAt ? formatInstant(resumesAt, now) : null,
 			// What Pause/Allow will do right now, surfaced on the buttons.
 			horizonLabel: scheduleChange ? `until ${formatInstant(scheduleChange, now)}` : 'for 3 hours'
 		});
@@ -151,8 +160,18 @@ async function applyForce(request: Request, type: OverrideType) {
 	return { success: true };
 }
 
+/** Clear overrides: drop every override so the schedule applies again. */
+async function applyClear(request: Request) {
+	const profileId = readProfileId(await request.formData());
+	if (profileId === null) return fail(400, { message: 'Missing profile' });
+
+	await deleteOverrides(await getDataSource(), profileId);
+	return { success: true };
+}
+
 export const actions: Actions = {
 	extend: ({ request }) => applyExtend(request),
 	pauseNow: ({ request }) => applyForce(request, 'block_now'),
-	allowNow: ({ request }) => applyForce(request, 'allow_now')
+	allowNow: ({ request }) => applyForce(request, 'allow_now'),
+	clearOverrides: ({ request }) => applyClear(request)
 };

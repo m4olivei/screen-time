@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
+	import InfoIcon from '@lucide/svelte/icons/info';
+	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import type { PageProps, SubmitFunction } from './$types.js';
@@ -91,6 +93,7 @@
 		<Card.Root>
 			<Card.Header>
 				<Card.Title class="text-xl leading-snug">
+					<span aria-hidden="true">{profile.onSchedule ? '📅' : '⏱️'}</span>
 					{possessive(profile.name)} internet:
 					<span
 						class={profile.state === 'ON'
@@ -98,7 +101,19 @@
 							: 'text-red-600 dark:text-red-500'}>{profile.state}</span
 					>{#if profile.untilLabel}&nbsp;until {profile.untilLabel}{/if}
 				</Card.Title>
-				<Card.Description>Changes take effect within seconds.</Card.Description>
+				{#if profile.resumeLabel}
+					<Alert.Root variant="info" class="mt-3 has-data-[slot=alert-action]:pr-36">
+						<InfoIcon />
+						<Alert.Title>Override on</Alert.Title>
+						<Alert.Description>Schedule resumes at {profile.resumeLabel}.</Alert.Description>
+						<Alert.Action>
+							<form method="POST" action="?/clearOverrides" use:enhance={submitOverride}>
+								<input type="hidden" name="profileId" value={profile.id} />
+								<Button type="submit" variant="outline" size="sm">Clear overrides</Button>
+							</form>
+						</Alert.Action>
+					</Alert.Root>
+				{/if}
 			</Card.Header>
 			<Card.Content>
 				<form method="POST" use:enhance={submitOverride} class="flex flex-col gap-3">

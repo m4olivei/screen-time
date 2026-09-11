@@ -90,6 +90,15 @@ export async function extendOverride(
 	return repository.save(override);
 }
 
+/**
+ * Delete every override for a profile, handing it straight back to the
+ * schedule. Returns the number removed.
+ */
+export async function deleteOverrides(dataSource: DataSource, profileId: number): Promise<number> {
+	const result = await dataSource.getRepository(Override).delete({ profileId });
+	return result.affected ?? 0;
+}
+
 /** Delete overrides that are no longer active. Returns the number removed. */
 export async function pruneExpiredOverrides(
 	dataSource: DataSource,
